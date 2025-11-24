@@ -51,7 +51,7 @@ export function generateToken(deviceId: string, spaceId: string): string {
   return jwt.sign(
     { device_id: deviceId, space_id: spaceId },
     config.jwt.secret,
-    { expiresIn: config.jwt.expiresIn as string }
+    { expiresIn: config.jwt.expiresIn } as jwt.SignOptions
   );
 }
 
