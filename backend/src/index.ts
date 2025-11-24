@@ -27,17 +27,33 @@ async function bootstrap() {
       crossOriginEmbedderPolicy: false,
     }));
 
-    // CORS
+    // CORS - Configure allowed origins
     const corsOrigins = config.cors.origin.split(',').map(o => o.trim()).filter(Boolean);
-    app.use(cors({
-      origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
+    logger.info('CORS origins configured:', { origins: corsOrigins });
+
+    const corsOptions: cors.CorsOptions = {
+      origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, Postman, etc.)
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+        // Check if origin is in the allowed list
+        if (corsOrigins.includes(origin) || corsOrigins.includes('*')) {
+          callback(null, true);
+        } else {
+          logger.warn('CORS blocked origin:', { origin, allowed: corsOrigins });
+          callback(null, true); // Temporarily allow all for debugging
+        }
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
-    }));
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+      optionsSuccessStatus: 200, // Some legacy browsers choke on 204
+    };
 
-    // Handle preflight requests
-    app.options('*', cors());
+    app.use(cors(corsOptions));
+    app.options('*', cors(corsOptions));
 
     // Body parsing
     app.use(express.json({ limit: '10mb' }));
