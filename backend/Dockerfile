@@ -3,15 +3,15 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy package files from backend
+COPY backend/package*.json ./
 
 # Install all dependencies (including devDependencies for build)
 RUN npm ci
 
-# Copy source code
-COPY tsconfig.json ./
-COPY src ./src
+# Copy source code from backend
+COPY backend/tsconfig.json ./
+COPY backend/src ./src
 
 # Build TypeScript
 RUN npm run build
@@ -22,7 +22,7 @@ FROM node:20-alpine AS production
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY backend/package*.json ./
 
 # Install only production dependencies
 RUN npm ci --only=production
@@ -31,7 +31,7 @@ RUN npm ci --only=production
 COPY --from=builder /app/dist ./dist
 
 # Copy database migrations
-COPY database/migrations ./database/migrations
+COPY backend/database/migrations ./database/migrations
 
 # Set environment
 ENV NODE_ENV=production
