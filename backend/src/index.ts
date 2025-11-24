@@ -1,6 +1,5 @@
 import express from 'express';
 import http from 'http';
-import cors from 'cors';
 import helmet from 'helmet';
 import { config, validateConfig } from './config';
 import { testConnection } from './config/database';
@@ -21,39 +20,33 @@ async function bootstrap() {
     const app = express();
     const server = http.createServer(app);
 
-    // Security middleware
+    // CORS - MUST be first, before any other middleware
+    // Manual CORS handler to ensure headers are always set
+    app.use((req, res, next) => {
+      const origin = req.headers.origin;
+
+      // Allow all origins for now (can be restricted later)
+      res.header('Access-Control-Allow-Origin', origin || '*');
+      res.header('Access-Control-Allow-Credentials', 'true');
+      res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+      res.header('Access-Control-Max-Age', '86400'); // 24 hours
+
+      // Handle preflight requests immediately
+      if (req.method === 'OPTIONS') {
+        logger.info('CORS preflight request', { origin, path: req.path });
+        return res.status(200).end();
+      }
+
+      next();
+    });
+
+    // Security middleware (after CORS)
     app.use(helmet({
-      contentSecurityPolicy: false, // Disable for API
+      contentSecurityPolicy: false,
       crossOriginEmbedderPolicy: false,
+      crossOriginResourcePolicy: false,
     }));
-
-    // CORS - Configure allowed origins
-    const corsOrigins = config.cors.origin.split(',').map(o => o.trim()).filter(Boolean);
-    logger.info('CORS origins configured:', { origins: corsOrigins });
-
-    const corsOptions: cors.CorsOptions = {
-      origin: (origin, callback) => {
-        // Allow requests with no origin (mobile apps, Postman, etc.)
-        if (!origin) {
-          callback(null, true);
-          return;
-        }
-        // Check if origin is in the allowed list
-        if (corsOrigins.includes(origin) || corsOrigins.includes('*')) {
-          callback(null, true);
-        } else {
-          logger.warn('CORS blocked origin:', { origin, allowed: corsOrigins });
-          callback(null, true); // Temporarily allow all for debugging
-        }
-      },
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-      optionsSuccessStatus: 200, // Some legacy browsers choke on 204
-    };
-
-    app.use(cors(corsOptions));
-    app.options('*', cors(corsOptions));
 
     // Body parsing
     app.use(express.json({ limit: '10mb' }));
