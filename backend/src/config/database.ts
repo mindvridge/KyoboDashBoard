@@ -1,4 +1,4 @@
-import { Pool, PoolConfig } from 'pg';
+import { Pool, PoolConfig, PoolClient } from 'pg';
 import { config } from './index';
 import { logger } from '../utils/logger';
 
@@ -57,9 +57,9 @@ export async function getClient() {
 }
 
 export async function transaction<T>(
-  callback: (client: ReturnType<typeof pool.connect> extends Promise<infer C> ? C : never) => Promise<T>
+  callback: (client: PoolClient) => Promise<T>
 ): Promise<T> {
-  const client = await getClient();
+  const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const result = await callback(client);

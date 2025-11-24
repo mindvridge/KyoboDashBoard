@@ -7,9 +7,8 @@ let redis: Redis | null = null;
 export function getRedisClient(): Redis {
   if (!redis) {
     redis = new Redis(config.redis.url, {
-      retryDelayOnFailover: 100,
       maxRetriesPerRequest: 3,
-      lazyConnect: true,
+      retryStrategy: (times) => Math.min(times * 100, 3000),
     });
 
     redis.on('connect', () => {
@@ -31,7 +30,6 @@ export function getRedisClient(): Redis {
 export async function connectRedis(): Promise<boolean> {
   try {
     const client = getRedisClient();
-    await client.connect();
     await client.ping();
     logger.info('Redis connection successful');
     return true;

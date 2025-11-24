@@ -54,7 +54,7 @@ export class StatsService {
         avg_session_duration: 0, // Would need separate query
       })),
       hourly_sessions: Array.from({ length: 24 }, (_, hour) => {
-        const found = hourlyDistribution.find((h: any) => parseInt(h.hour, 10) === hour);
+        const found = (hourlyDistribution as Array<{ hour: string; session_count: string }>).find(h => parseInt(h.hour, 10) === hour);
         return {
           hour,
           session_count: found ? parseInt(found.session_count, 10) : 0,
