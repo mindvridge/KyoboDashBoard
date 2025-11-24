@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://kyobo-backend-production.up.railway.app';
 
 export async function fetchApi<T>(
   endpoint: string,
