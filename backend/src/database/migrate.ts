@@ -1,17 +1,32 @@
-import { Pool } from 'pg';
+import { Pool, PoolConfig } from 'pg';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432', 10),
-  database: process.env.DB_NAME || 'vr_logs',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
-});
+function getPoolConfig(): PoolConfig {
+  // Check for DATABASE_URL (Railway, Heroku, etc.)
+  const databaseUrl = process.env.DATABASE_URL;
+
+  if (databaseUrl) {
+    return {
+      connectionString: databaseUrl,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    };
+  }
+
+  // Fallback to individual env vars
+  return {
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '5432', 10),
+    database: process.env.DB_NAME || 'vr_logs',
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'postgres',
+  };
+}
+
+const pool = new Pool(getPoolConfig());
 
 async function runMigrations() {
   const client = await pool.connect();
@@ -35,7 +50,9 @@ async function runMigrations() {
     const executedNames = new Set(executedMigrations.map((m: { name: string }) => m.name));
 
     // Read migration files
-    const migrationsDir = path.resolve(__dirname, '../../../database/migrations');
+    // In production (compiled), __dirname is dist/database
+    // In dev (tsx), __dirname is src/database
+    const migrationsDir = path.resolve(__dirname, '../../database/migrations');
     const files = fs.readdirSync(migrationsDir)
       .filter(f => f.endsWith('.sql'))
       .sort();
