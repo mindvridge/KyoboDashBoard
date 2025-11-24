@@ -60,7 +60,7 @@ export function PopularContentChart({ data, title = '인기 콘텐츠' }: Popula
                   name === 'views' ? `${value}회` : `${value}분`,
                   name === 'views' ? '조회수' : '시청시간',
                 ]}
-                labelFormatter={(label, payload) => {
+                labelFormatter={(label: string, payload: any[]) => {
                   if (payload && payload[0]) {
                     return payload[0].payload.fullName;
                   }
