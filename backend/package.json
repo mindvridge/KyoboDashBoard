@@ -5,9 +5,10 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "tsc && npm run migrate:prod",
     "start": "node dist/index.js",
     "migrate": "tsx src/database/migrate.ts",
+    "migrate:prod": "node dist/database/migrate.js || echo 'Migration skipped'",
     "seed": "tsx src/database/seed.ts",
     "test": "jest",
     "lint": "eslint src/**/*.ts"
