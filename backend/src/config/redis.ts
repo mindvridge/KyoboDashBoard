@@ -79,9 +79,25 @@ export async function cacheDelete(key: string): Promise<void> {
 export async function cacheInvalidatePattern(pattern: string): Promise<void> {
   try {
     const client = getRedisClient();
-    const keys = await client.keys(pattern);
+    const keys: string[] = [];
+    let cursor = '0';
+
+    // Use SCAN instead of KEYS for better performance
+    // SCAN is non-blocking and doesn't freeze Redis on large datasets
+    do {
+      const result = await client.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+      cursor = result[0];
+      keys.push(...result[1]);
+    } while (cursor !== '0');
+
+    // Delete keys in batches to avoid blocking
     if (keys.length > 0) {
-      await client.del(...keys);
+      const batchSize = 100;
+      for (let i = 0; i < keys.length; i += batchSize) {
+        const batch = keys.slice(i, i + batchSize);
+        await client.del(...batch);
+      }
+      logger.debug('Cache invalidated', { pattern, count: keys.length });
     }
   } catch (error) {
     logger.warn('Cache invalidate pattern failed', { pattern, error });

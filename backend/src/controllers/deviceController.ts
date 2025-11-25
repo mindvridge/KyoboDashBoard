@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { DeviceService } from '../services/deviceService';
+import { DeviceModel } from '../models/device';
 import { DeviceRegistrationRequest } from '../types';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../utils/logger';
@@ -124,6 +125,7 @@ export class DeviceController {
   /**
    * POST /api/devices/heartbeat
    * Device heartbeat to update last seen
+   * Optimized: directly updates last_seen without extra SELECT query
    */
   static async heartbeat(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -135,10 +137,9 @@ export class DeviceController {
         return;
       }
 
-      const device = await DeviceService.getDeviceById(req.device.device_id);
-      if (device) {
-        await DeviceService.updateDevice(device.id, {});
-      }
+      // Direct update without SELECT - device is already authenticated
+      // This reduces 2 queries (SELECT + UPDATE) to just 1 UPDATE
+      await DeviceModel.updateLastSeen(req.device.device_id);
 
       res.json({
         success: true,
