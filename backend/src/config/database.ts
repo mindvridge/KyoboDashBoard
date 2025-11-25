@@ -17,8 +17,10 @@ const poolConfig: PoolConfig = {
 
 export const pool = new Pool(poolConfig);
 
-pool.on('connect', () => {
-  logger.debug('New client connected to database');
+pool.on('connect', async (client) => {
+  // Set timezone to Korea Standard Time (KST)
+  await client.query("SET TIME ZONE 'Asia/Seoul'");
+  logger.debug('New client connected to database with KST timezone');
 });
 
 pool.on('error', (err) => {

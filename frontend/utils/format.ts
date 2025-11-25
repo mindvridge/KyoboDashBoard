@@ -1,10 +1,15 @@
 import { format, formatDistanceToNow, parseISO } from 'date-fns';
+import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
 import { ko } from 'date-fns/locale';
+
+// 한국 표준시 (KST) 타임존
+const KST_TIMEZONE = 'Asia/Seoul';
 
 export function formatDate(dateString: string, formatStr = 'yyyy-MM-dd HH:mm:ss'): string {
   try {
     const date = typeof dateString === 'string' ? parseISO(dateString) : dateString;
-    return format(date, formatStr, { locale: ko });
+    // KST 타임존으로 포맷팅
+    return formatInTimeZone(date, KST_TIMEZONE, formatStr, { locale: ko });
   } catch {
     return dateString;
   }
@@ -13,7 +18,9 @@ export function formatDate(dateString: string, formatStr = 'yyyy-MM-dd HH:mm:ss'
 export function formatRelativeTime(dateString: string): string {
   try {
     const date = typeof dateString === 'string' ? parseISO(dateString) : dateString;
-    return formatDistanceToNow(date, { addSuffix: true, locale: ko });
+    // KST 타임존으로 변환 후 상대 시간 계산
+    const kstDate = toZonedTime(date, KST_TIMEZONE);
+    return formatDistanceToNow(kstDate, { addSuffix: true, locale: ko });
   } catch {
     return dateString;
   }
