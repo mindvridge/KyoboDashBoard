@@ -1,9 +1,12 @@
 import express from 'express';
 import http from 'http';
 import helmet from 'helmet';
+import swaggerUi from 'swagger-ui-express';
 import { config, validateConfig } from './config';
+import { initSentry, Sentry } from './config/sentry';
 import { testConnection } from './config/database';
 import { connectRedis } from './config/redis';
+import { swaggerSpec } from './config/swagger';
 import routes from './routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { apiLimiter } from './middleware/rateLimiter';
@@ -13,6 +16,9 @@ import { logger } from './utils/logger';
 
 async function bootstrap() {
   try {
+    // Initialize Sentry first (for error tracking)
+    initSentry();
+
     // Validate configuration
     validateConfig();
 
@@ -20,7 +26,13 @@ async function bootstrap() {
     const app = express();
     const server = http.createServer(app);
 
-    // CORS - MUST be first, before any other middleware
+    // Sentry request handler - MUST be first
+    if (config.sentry.enabled) {
+      app.use(Sentry.Handlers.requestHandler());
+      app.use(Sentry.Handlers.tracingHandler());
+    }
+
+    // CORS - MUST be after Sentry, before other middleware
     // Manual CORS handler with security restrictions
     app.use((req, res, next) => {
       const origin = req.headers.origin;
@@ -96,11 +108,23 @@ async function bootstrap() {
       next();
     });
 
+    // API Documentation (Swagger UI)
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+      customSiteTitle: 'VR Log Collection API',
+      customCss: '.swagger-ui .topbar { display: none }',
+    }));
+
     // API routes
     app.use('/api', routes);
 
     // Error handling
     app.use(notFoundHandler);
+
+    // Sentry error handler - MUST be before custom error handler
+    if (config.sentry.enabled) {
+      app.use(Sentry.Handlers.errorHandler());
+    }
+
     app.use(errorHandler);
 
     // Test database connection
