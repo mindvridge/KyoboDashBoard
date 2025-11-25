@@ -38,25 +38,38 @@ export const sessionStartSchema = z.object({
   device_id: z.string().min(1, 'Device ID is required'),
 });
 
+// Custom refinement for metadata size validation
+const MAX_METADATA_SIZE = 10240; // 10KB
+const metadataValidator = z.record(z.unknown()).optional().refine(
+  (data) => {
+    if (!data) return true;
+    const jsonString = JSON.stringify(data);
+    return jsonString.length <= MAX_METADATA_SIZE;
+  },
+  {
+    message: `Metadata size must not exceed ${MAX_METADATA_SIZE} bytes`,
+  }
+);
+
 export const contentSelectSchema = z.object({
   session_id: z.string().uuid('Invalid session ID'),
-  content_id: z.string().min(1, 'Content ID is required'),
-  content_name: z.string().min(1, 'Content name is required'),
-  metadata: z.record(z.unknown()).optional(),
+  content_id: z.string().min(1, 'Content ID is required').max(255, 'Content ID too long'),
+  content_name: z.string().min(1, 'Content name is required').max(500, 'Content name too long'),
+  metadata: metadataValidator,
 });
 
 export const contentWatchSchema = z.object({
   session_id: z.string().uuid('Invalid session ID'),
-  content_id: z.string().min(1, 'Content ID is required'),
-  content_name: z.string().min(1, 'Content name is required'),
+  content_id: z.string().min(1, 'Content ID is required').max(255, 'Content ID too long'),
+  content_name: z.string().min(1, 'Content name is required').max(500, 'Content name too long'),
   action_type: z.enum(['WATCH_START', 'WATCH_END', 'WATCH_PAUSE', 'WATCH_RESUME']),
-  duration: z.number().min(0).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  duration: z.number().min(0, 'Duration cannot be negative').max(86400, 'Duration cannot exceed 24 hours').optional(),
+  metadata: metadataValidator,
 });
 
 export const sessionEndSchema = z.object({
   session_id: z.string().uuid('Invalid session ID'),
-  lobby_time: z.number().min(0).optional(),
+  lobby_time: z.number().min(0, 'Lobby time cannot be negative').max(86400, 'Lobby time cannot exceed 24 hours').optional(),
 });
 
 export const spaceCreateSchema = z.object({

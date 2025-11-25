@@ -21,21 +21,47 @@ async function bootstrap() {
     const server = http.createServer(app);
 
     // CORS - MUST be first, before any other middleware
-    // Manual CORS handler to ensure headers are always set
+    // Manual CORS handler with security restrictions
     app.use((req, res, next) => {
       const origin = req.headers.origin;
 
-      // Allow all origins for now (can be restricted later)
-      res.header('Access-Control-Allow-Origin', origin || '*');
-      res.header('Access-Control-Allow-Credentials', 'true');
-      res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-      res.header('Access-Control-Max-Age', '86400'); // 24 hours
+      // Get allowed origins from environment variable
+      const allowedOrigins = (process.env.CORS_ORIGINS || '')
+        .split(',')
+        .map(o => o.trim())
+        .filter(o => o);
+
+      // Determine if origin is allowed
+      let isOriginAllowed = false;
+
+      if (allowedOrigins.length === 0) {
+        // Development mode: allow all origins if CORS_ORIGINS not set
+        isOriginAllowed = true;
+        res.header('Access-Control-Allow-Origin', origin || '*');
+        logger.debug('CORS: Development mode - allowing all origins');
+      } else {
+        // Production mode: only allow specified origins
+        if (origin && allowedOrigins.includes(origin)) {
+          isOriginAllowed = true;
+          res.header('Access-Control-Allow-Origin', origin);
+          logger.debug('CORS: Origin allowed', { origin });
+        } else {
+          logger.warn('CORS: Origin blocked', { origin, allowedOrigins });
+          // Don't set Access-Control-Allow-Origin header for blocked origins
+        }
+      }
+
+      // Set other CORS headers only if origin is allowed
+      if (isOriginAllowed) {
+        res.header('Access-Control-Allow-Credentials', 'true');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+        res.header('Access-Control-Max-Age', '86400'); // 24 hours
+      }
 
       // Handle preflight requests immediately
       if (req.method === 'OPTIONS') {
-        logger.info('CORS preflight request', { origin, path: req.path });
-        return res.status(200).end();
+        return res.status(isOriginAllowed ? 200 : 403).end();
       }
 
       next();

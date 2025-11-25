@@ -6,11 +6,14 @@ import { logger } from '../utils/logger';
 import { NotFoundError, ConflictError } from '../utils/errors';
 import { cacheGet, cacheSet, cacheDelete, cacheInvalidatePattern } from '../config/redis';
 import { RealtimeService } from './realtimeService';
+import { transaction } from '../config/database';
+import { v4 as uuidv4 } from 'uuid';
 
 export class SessionService {
   /**
    * Start a new session for a device
    * Ends any existing active session for the device
+   * Uses transaction to prevent race conditions
    */
   static async startSession(deviceId: string): Promise<SessionStartResponse> {
     // Verify device exists
@@ -19,18 +22,46 @@ export class SessionService {
       throw new NotFoundError('Device not found');
     }
 
-    // Check for existing active session
-    const existingSession = await SessionModel.findActiveByDeviceId(deviceId);
-    if (existingSession) {
-      // End existing session before starting new one
-      await SessionModel.endSession(existingSession.id);
-      logger.info('Ended previous session', { session_id: existingSession.id });
-    }
+    // Use transaction to ensure atomicity and prevent race conditions
+    const session = await transaction(async (client) => {
+      // Check for existing active session with FOR UPDATE lock
+      const existingSessionSql = `
+        SELECT * FROM sessions
+        WHERE device_id = $1 AND is_active = true
+        ORDER BY start_time DESC
+        LIMIT 1
+        FOR UPDATE
+      `;
+      const existingSessions = await client.query<Session>(existingSessionSql, [deviceId]);
+      const existingSession = existingSessions.rows[0];
 
-    // Create new session
-    const session = await SessionModel.create(deviceId);
+      if (existingSession) {
+        // End existing session before starting new one
+        const endSessionSql = `
+          UPDATE sessions
+          SET
+            end_time = NOW(),
+            duration = EXTRACT(EPOCH FROM (NOW() - start_time))::integer,
+            is_active = false
+          WHERE id = $1
+          RETURNING *
+        `;
+        await client.query(endSessionSql, [existingSession.id]);
+        logger.info('Ended previous session', { session_id: existingSession.id });
+      }
 
-    // Update device last seen
+      // Create new session
+      const newSessionId = uuidv4();
+      const createSessionSql = `
+        INSERT INTO sessions (id, device_id, start_time, is_active, created_at)
+        VALUES ($1, $2, NOW(), true, NOW())
+        RETURNING *
+      `;
+      const newSessionResult = await client.query<Session>(createSessionSql, [newSessionId, deviceId]);
+      return newSessionResult.rows[0];
+    });
+
+    // Update device last seen (outside transaction)
     await DeviceModel.updateLastSeen(deviceId);
 
     // Invalidate stats cache
