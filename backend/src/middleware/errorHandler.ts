@@ -2,7 +2,6 @@ import { Request, Response, NextFunction } from 'express';
 import { AppError, ValidationError } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { config } from '../config';
-import { Sentry } from '../config/sentry';
 
 export interface ErrorResponse {
   success: false;
@@ -26,33 +25,6 @@ export function errorHandler(
     path: req.path,
     method: req.method,
   });
-
-  // Report to Sentry (but not for expected errors)
-  if (config.sentry.enabled) {
-    if (err instanceof AppError) {
-      // Only report server errors (5xx) to Sentry
-      if (err.statusCode >= 500) {
-        Sentry.captureException(err, {
-          extra: {
-            path: req.path,
-            method: req.method,
-            query: req.query,
-            body: req.body,
-          },
-        });
-      }
-    } else {
-      // All unknown errors should be reported
-      Sentry.captureException(err, {
-        extra: {
-          path: req.path,
-          method: req.method,
-          query: req.query,
-          body: req.body,
-        },
-      });
-    }
-  }
 
   if (err instanceof AppError) {
     const response: ErrorResponse = {

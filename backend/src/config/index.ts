@@ -56,12 +56,6 @@ export const config = {
   logging: {
     level: process.env.LOG_LEVEL || 'debug',
   },
-
-  sentry: {
-    dsn: process.env.SENTRY_DSN || '',
-    environment: process.env.NODE_ENV || 'development',
-    enabled: process.env.SENTRY_ENABLED === 'true' || process.env.NODE_ENV === 'production',
-  },
 };
 
 export function validateConfig(): void {
