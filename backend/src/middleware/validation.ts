@@ -84,3 +84,27 @@ export const dateRangeSchema = z.object({
   space_id: z.string().uuid().optional(),
   device_id: z.string().optional(),
 });
+
+// Video validation schemas
+export const videoCreateSchema = z.object({
+  filename: z.string().min(1, 'Filename is required').max(500),
+  title: z.string().min(1, 'Title is required').max(500),
+  description: z.string().max(2000).optional(),
+  file_url: z.string().max(1000).optional(),
+  thumbnail_url: z.string().max(1000).optional(),
+  duration: z.number().min(0).max(86400).optional(),
+  file_size: z.number().min(0).optional(),
+  sort_order: z.number().min(0).optional(),
+});
+
+export const videoUpdateSchema = z.object({
+  filename: z.string().min(1).max(500).optional(),
+  title: z.string().min(1).max(500).optional(),
+  description: z.string().max(2000).optional(),
+  file_url: z.string().max(1000).optional(),
+  thumbnail_url: z.string().max(1000).optional(),
+  duration: z.number().min(0).max(86400).optional(),
+  file_size: z.number().min(0).optional(),
+  is_active: z.boolean().optional(),
+  sort_order: z.number().min(0).optional(),
+});

@@ -123,3 +123,43 @@ export interface LogFilter extends DateFilter {
   contentId?: string;
   actionType?: string;
 }
+
+// Video Types
+export interface Video {
+  id: string;
+  index: number;
+  filename: string;
+  title: string;
+  description?: string;
+  file_url?: string;
+  thumbnail_url?: string;
+  duration?: number;
+  file_size?: number;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VideoCreateRequest {
+  filename: string;
+  title: string;
+  description?: string;
+  file_url?: string;
+  thumbnail_url?: string;
+  duration?: number;
+  file_size?: number;
+  sort_order?: number;
+}
+
+export interface VideoUpdateRequest {
+  filename?: string;
+  title?: string;
+  description?: string;
+  file_url?: string;
+  thumbnail_url?: string;
+  duration?: number;
+  file_size?: number;
+  is_active?: boolean;
+  sort_order?: number;
+}

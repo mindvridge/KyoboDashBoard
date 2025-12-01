@@ -117,3 +117,41 @@ export const devicesApi = {
   getActive: () => fetchApi<{ success: boolean; data: any[] }>('/devices/active'),
   getById: (id: string) => fetchApi<{ success: boolean; data: any }>(`/devices/${id}`),
 };
+
+// Videos API
+export const videosApi = {
+  getAll: (activeOnly?: boolean) => {
+    const query = activeOnly ? '?active_only=true' : '';
+    return fetchApi<{ success: boolean; data: any[]; count: number }>(`/videos${query}`);
+  },
+  getList: () => fetchApi<{ success: boolean; data: any[]; count: number }>('/videos/list'),
+  getById: (id: string) => fetchApi<{ success: boolean; data: any }>(`/videos/${id}`),
+  getByIndex: (index: number) => fetchApi<{ success: boolean; data: any }>(`/videos/index/${index}`),
+  create: (data: any) =>
+    fetchApi<{ success: boolean; data: any }>('/videos', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  update: (id: string, data: any) =>
+    fetchApi<{ success: boolean; data: any }>(`/videos/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  delete: (id: string) =>
+    fetchApi<{ success: boolean; message: string }>(`/videos/${id}`, {
+      method: 'DELETE',
+    }),
+  toggleActive: (id: string) =>
+    fetchApi<{ success: boolean; data: any }>(`/videos/${id}/toggle`, {
+      method: 'POST',
+    }),
+  reorder: (videoIds: string[]) =>
+    fetchApi<{ success: boolean; message: string }>('/videos/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ video_ids: videoIds }),
+    }),
+  exportUrl: (activeOnly?: boolean) => {
+    const query = activeOnly ? '?active_only=true' : '';
+    return `${API_BASE}/api/videos/export${query}`;
+  },
+};

@@ -15,6 +15,7 @@
 7. [WebSocket 실시간 통신](#7-websocket-실시간-통신)
 8. [에러 처리](#8-에러-처리)
 9. [베스트 프랙티스](#9-베스트-프랙티스)
+10. [비디오 콘텐츠 API](#10-비디오-콘텐츠-api)
 
 ---
 
@@ -1199,6 +1200,396 @@ public class VRAppManager : MonoBehaviour
 
 ---
 
+## 10. 비디오 콘텐츠 API
+
+Unity에서 서버에 등록된 비디오 콘텐츠 목록을 조회할 수 있습니다.
+
+### 10.1 비디오 목록 조회
+
+#### GET `/api/videos/list` - 활성 비디오 목록 (Unity용)
+
+**인증**: 불필요
+
+**응답** - 200 OK
+```json
+{
+    "success": true,
+    "data": [
+        {
+            "id": "550e8400-e29b-41d4-a716-446655440001",
+            "index": 1,
+            "filename": "hangang_vr_tour.mp4",
+            "title": "한강 VR 투어",
+            "description": "서울 한강공원의 아름다운 풍경을 VR로 체험해보세요.",
+            "file_url": "https://example.com/videos/hangang_vr_tour.mp4",
+            "thumbnail_url": "https://example.com/thumbnails/hangang.jpg",
+            "duration": 180,
+            "file_size": 1073741824
+        },
+        {
+            "id": "550e8400-e29b-41d4-a716-446655440002",
+            "index": 2,
+            "filename": "seoul_timelapse.mp4",
+            "title": "서울 타임랩스",
+            "description": "서울의 하루를 4K 타임랩스 영상으로 감상하세요.",
+            "file_url": "https://example.com/videos/seoul_timelapse.mp4",
+            "thumbnail_url": "https://example.com/thumbnails/seoul.jpg",
+            "duration": 240,
+            "file_size": 2147483648
+        }
+    ],
+    "count": 2
+}
+```
+
+---
+
+#### GET `/api/videos/index/:index` - 인덱스로 비디오 조회
+
+**인증**: 불필요
+
+**파라미터**
+| 파라미터 | 타입 | 설명 |
+|----------|------|------|
+| index | number | 비디오 고유 인덱스 번호 |
+
+**응답** - 200 OK
+```json
+{
+    "success": true,
+    "data": {
+        "id": "550e8400-e29b-41d4-a716-446655440001",
+        "index": 1,
+        "filename": "hangang_vr_tour.mp4",
+        "title": "한강 VR 투어",
+        "description": "서울 한강공원의 아름다운 풍경을 VR로 체험해보세요.",
+        "file_url": "https://example.com/videos/hangang_vr_tour.mp4",
+        "thumbnail_url": "https://example.com/thumbnails/hangang.jpg",
+        "duration": 180,
+        "file_size": 1073741824
+    }
+}
+```
+
+---
+
+#### GET `/api/videos/export` - JSON 파일로 내보내기
+
+**인증**: 불필요
+
+**쿼리 파라미터**
+| 파라미터 | 타입 | 설명 |
+|----------|------|------|
+| active_only | boolean | true 시 활성 비디오만 |
+
+**응답**: JSON 파일 다운로드
+
+```json
+[
+    {
+        "index": 1,
+        "filename": "hangang_vr_tour.mp4",
+        "title": "한강 VR 투어",
+        "description": "서울 한강공원의 아름다운 풍경을 VR로 체험해보세요.",
+        "file_url": "https://example.com/videos/hangang_vr_tour.mp4",
+        "thumbnail_url": "https://example.com/thumbnails/hangang.jpg",
+        "duration": 180,
+        "file_size": 1073741824
+    }
+]
+```
+
+---
+
+### 10.2 Video 데이터 모델
+
+```csharp
+[Serializable]
+public class Video
+{
+    public string id;           // UUID
+    public int index;           // 고유 인덱스 (자동 증가)
+    public string filename;     // 비디오 파일이름
+    public string title;        // 비디오 타이틀
+    public string description;  // 비디오 설명
+    public string file_url;     // 파일 다운로드 URL
+    public string thumbnail_url;// 썸네일 URL
+    public int duration;        // 비디오 길이 (초)
+    public long file_size;      // 파일 크기 (바이트)
+}
+
+[Serializable]
+public class VideoListResponse
+{
+    public bool success;
+    public Video[] data;
+    public int count;
+}
+```
+
+---
+
+### 10.3 Unity에서 비디오 목록 조회 예제
+
+```csharp
+using System;
+using System.Threading.Tasks;
+using UnityEngine;
+using UnityEngine.Networking;
+
+public class VideoManager : MonoBehaviour
+{
+    [SerializeField] private string serverUrl = "https://kyobodashboard-production.up.railway.app";
+
+    private Video[] videos;
+
+    async void Start()
+    {
+        await LoadVideoList();
+    }
+
+    /// <summary>
+    /// 서버에서 비디오 목록을 불러옵니다.
+    /// </summary>
+    public async Task<bool> LoadVideoList()
+    {
+        try
+        {
+            string url = $"{serverUrl}/api/videos/list";
+
+            using (var request = UnityWebRequest.Get(url))
+            {
+                var operation = request.SendWebRequest();
+
+                while (!operation.isDone)
+                    await Task.Yield();
+
+                if (request.result == UnityWebRequest.Result.Success)
+                {
+                    var response = JsonUtility.FromJson<VideoListResponse>(request.downloadHandler.text);
+
+                    if (response.success)
+                    {
+                        videos = response.data;
+                        Debug.Log($"[VideoManager] {videos.Length}개 비디오 로드 완료");
+                        return true;
+                    }
+                }
+
+                Debug.LogError($"[VideoManager] 비디오 로드 실패: {request.error}");
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[VideoManager] 예외 발생: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 인덱스로 비디오 정보를 가져옵니다.
+    /// </summary>
+    public Video GetVideoByIndex(int index)
+    {
+        if (videos == null) return null;
+
+        foreach (var video in videos)
+        {
+            if (video.index == index)
+                return video;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 모든 비디오 목록을 반환합니다.
+    /// </summary>
+    public Video[] GetAllVideos()
+    {
+        return videos;
+    }
+
+    /// <summary>
+    /// 비디오 개수를 반환합니다.
+    /// </summary>
+    public int GetVideoCount()
+    {
+        return videos?.Length ?? 0;
+    }
+}
+
+// 데이터 클래스
+[Serializable]
+public class Video
+{
+    public string id;
+    public int index;
+    public string filename;
+    public string title;
+    public string description;
+    public string file_url;
+    public string thumbnail_url;
+    public int duration;
+    public long file_size;
+}
+
+[Serializable]
+public class VideoListResponse
+{
+    public bool success;
+    public Video[] data;
+    public int count;
+}
+```
+
+---
+
+### 10.4 비디오 목록 UI 연동 예제
+
+```csharp
+using UnityEngine;
+using UnityEngine.UI;
+
+public class VideoListUI : MonoBehaviour
+{
+    [SerializeField] private VideoManager videoManager;
+    [SerializeField] private Transform contentParent;
+    [SerializeField] private GameObject videoItemPrefab;
+
+    async void Start()
+    {
+        bool success = await videoManager.LoadVideoList();
+
+        if (success)
+        {
+            DisplayVideoList();
+        }
+    }
+
+    void DisplayVideoList()
+    {
+        var videos = videoManager.GetAllVideos();
+
+        foreach (var video in videos)
+        {
+            var item = Instantiate(videoItemPrefab, contentParent);
+
+            // UI 요소 설정
+            item.transform.Find("IndexText").GetComponent<Text>().text = video.index.ToString();
+            item.transform.Find("TitleText").GetComponent<Text>().text = video.title;
+            item.transform.Find("DescriptionText").GetComponent<Text>().text = video.description;
+            item.transform.Find("DurationText").GetComponent<Text>().text = FormatDuration(video.duration);
+
+            // 클릭 이벤트
+            var button = item.GetComponent<Button>();
+            var capturedVideo = video;
+            button.onClick.AddListener(() => OnVideoSelected(capturedVideo));
+        }
+    }
+
+    void OnVideoSelected(Video video)
+    {
+        Debug.Log($"선택된 비디오: {video.title} (Index: {video.index})");
+
+        // VRLogger로 콘텐츠 선택 로그
+        _ = VRLogDashboard.VRLogger.Instance.LogContentSelect(
+            video.index.ToString(),  // content_id로 index 사용
+            video.title
+        );
+    }
+
+    string FormatDuration(int seconds)
+    {
+        int mins = seconds / 60;
+        int secs = seconds % 60;
+        return $"{mins}:{secs:D2}";
+    }
+}
+```
+
+---
+
+### 10.5 비디오 콘텐츠와 로깅 연동
+
+```csharp
+using VRLogDashboard;
+using UnityEngine;
+
+public class VideoPlayer : MonoBehaviour
+{
+    private Video currentVideo;
+    private float watchStartTime;
+
+    public async void PlayVideo(Video video)
+    {
+        currentVideo = video;
+        watchStartTime = Time.time;
+
+        // 콘텐츠 선택 로그
+        await VRLogger.Instance.LogContentSelect(
+            video.index.ToString(),
+            video.title
+        );
+
+        // 시청 시작 로그
+        await VRLogger.Instance.LogWatchStart(
+            video.index.ToString(),
+            video.title
+        );
+
+        // 실제 비디오 재생 시작...
+    }
+
+    public async void StopVideo()
+    {
+        if (currentVideo == null) return;
+
+        float watchDuration = Time.time - watchStartTime;
+
+        // 시청 종료 로그
+        await VRLogger.Instance.LogWatchEnd(
+            currentVideo.index.ToString(),
+            currentVideo.title,
+            watchDuration
+        );
+
+        currentVideo = null;
+    }
+
+    public async void SwitchVideo(Video newVideo)
+    {
+        if (currentVideo != null)
+        {
+            // 콘텐츠 전환 로그
+            await VRLogger.Instance.LogContentSwitch(
+                currentVideo.index.ToString(),
+                newVideo.index.ToString(),
+                newVideo.title
+            );
+        }
+
+        await StopVideoAsync();
+        PlayVideo(newVideo);
+    }
+
+    private async System.Threading.Tasks.Task StopVideoAsync()
+    {
+        if (currentVideo == null) return;
+
+        float watchDuration = Time.time - watchStartTime;
+        await VRLogger.Instance.LogWatchEnd(
+            currentVideo.index.ToString(),
+            currentVideo.title,
+            watchDuration
+        );
+        currentVideo = null;
+    }
+}
+```
+
+---
+
 ## 부록
 
 ### A. API 문서 (Swagger)
@@ -1223,6 +1614,13 @@ public class VRAppManager : MonoBehaviour
 
 ---
 
-**문서 버전**: 1.0.0
+**문서 버전**: 1.1.0
 **최종 수정**: 2024-12-01
 **작성자**: KyoboDashBoard Team
+
+### 변경 이력
+
+| 버전 | 날짜 | 변경 내용 |
+|------|------|----------|
+| 1.1.0 | 2024-12-01 | 비디오 콘텐츠 API 섹션 추가 |
+| 1.0.0 | 2024-12-01 | 최초 문서 작성 |

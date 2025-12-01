@@ -11,12 +11,14 @@ import {
   Smartphone,
   Settings,
   Bell,
+  Video,
 } from 'lucide-react';
 
 const navigation = [
   { name: '대시보드', href: '/', icon: LayoutDashboard },
   { name: '통계 분석', href: '/analytics', icon: BarChart3 },
   { name: '로그 조회', href: '/logs', icon: FileText },
+  { name: '비디오 관리', href: '/videos', icon: Video },
   { name: '공간 관리', href: '/spaces', icon: MapPin },
   { name: '기기 관리', href: '/devices', icon: Smartphone },
   { name: '알림', href: '/alerts', icon: Bell },

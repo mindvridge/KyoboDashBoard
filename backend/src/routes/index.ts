@@ -4,6 +4,7 @@ import sessionRoutes from './sessions';
 import logRoutes from './logs';
 import statsRoutes from './stats';
 import spaceRoutes from './spaces';
+import videoRoutes from './videos';
 
 const router = Router();
 
@@ -22,5 +23,6 @@ router.use('/sessions', sessionRoutes);
 router.use('/logs', logRoutes);
 router.use('/stats', statsRoutes);
 router.use('/spaces', spaceRoutes);
+router.use('/videos', videoRoutes);
 
 export default router;
