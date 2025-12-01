@@ -12,6 +12,16 @@ const WEB3FORMS_API_URL = 'https://api.web3forms.com/submit';
 class EmailService {
   async sendEmail(options: EmailOptions): Promise<boolean> {
     try {
+      // Check if Web3Forms is configured
+      if (!config.web3forms.accessKey) {
+        logger.warn('Web3Forms access key not configured, skipping email', {
+          to: options.to,
+          subject: options.subject,
+        });
+        // Return true to not break the flow (email just won't be sent)
+        return true;
+      }
+
       const response = await fetch(WEB3FORMS_API_URL, {
         method: 'POST',
         headers: {

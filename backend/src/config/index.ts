@@ -58,7 +58,7 @@ export const config = {
   },
 
   web3forms: {
-    accessKey: process.env.WEB3FORMS_ACCESS_KEY || '4258627c-bad2-4191-b7c8-7e9d368aa415',
+    accessKey: process.env.WEB3FORMS_ACCESS_KEY || '',
   },
 
   frontend: {
