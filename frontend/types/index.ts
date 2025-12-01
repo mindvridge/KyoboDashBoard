@@ -135,6 +135,7 @@ export interface Video {
   thumbnail_url?: string;
   duration?: number;
   file_size?: number;
+  is_preinstalled: boolean;
   is_active: boolean;
   sort_order: number;
   created_at: string;
@@ -149,6 +150,7 @@ export interface VideoCreateRequest {
   thumbnail_url?: string;
   duration?: number;
   file_size?: number;
+  is_preinstalled?: boolean;
   sort_order?: number;
 }
 
@@ -160,6 +162,7 @@ export interface VideoUpdateRequest {
   thumbnail_url?: string;
   duration?: number;
   file_size?: number;
+  is_preinstalled?: boolean;
   is_active?: boolean;
   sort_order?: number;
 }

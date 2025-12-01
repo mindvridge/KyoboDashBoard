@@ -94,6 +94,7 @@ export const videoCreateSchema = z.object({
   thumbnail_url: z.string().max(1000).optional(),
   duration: z.number().min(0).max(86400).optional(),
   file_size: z.number().min(0).optional(),
+  is_preinstalled: z.boolean().optional(),
   sort_order: z.number().min(0).optional(),
 });
 
@@ -105,6 +106,7 @@ export const videoUpdateSchema = z.object({
   thumbnail_url: z.string().max(1000).optional(),
   duration: z.number().min(0).max(86400).optional(),
   file_size: z.number().min(0).optional(),
+  is_preinstalled: z.boolean().optional(),
   is_active: z.boolean().optional(),
   sort_order: z.number().min(0).optional(),
 });

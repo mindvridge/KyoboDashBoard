@@ -30,6 +30,7 @@ interface VideoFormData {
   thumbnail_url: string;
   duration: string;
   file_size: string;
+  is_preinstalled: boolean;
 }
 
 const initialFormData: VideoFormData = {
@@ -40,6 +41,7 @@ const initialFormData: VideoFormData = {
   thumbnail_url: '',
   duration: '',
   file_size: '',
+  is_preinstalled: false,
 };
 
 export default function VideosPage() {
@@ -87,6 +89,7 @@ export default function VideosPage() {
       thumbnail_url: video.thumbnail_url || '',
       duration: video.duration?.toString() || '',
       file_size: video.file_size?.toString() || '',
+      is_preinstalled: video.is_preinstalled || false,
     });
     setIsModalOpen(true);
     setError(null);
@@ -100,8 +103,12 @@ export default function VideosPage() {
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    const { name, value, type } = e.target;
+    if (type === 'checkbox') {
+      setFormData((prev) => ({ ...prev, [name]: (e.target as HTMLInputElement).checked }));
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -118,6 +125,7 @@ export default function VideosPage() {
         thumbnail_url: formData.thumbnail_url || undefined,
         duration: formData.duration ? parseInt(formData.duration, 10) : undefined,
         file_size: formData.file_size ? parseInt(formData.file_size, 10) : undefined,
+        is_preinstalled: formData.is_preinstalled,
       };
 
       if (editingVideo) {
@@ -231,6 +239,7 @@ export default function VideosPage() {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">설명</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">길이</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">크기</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">사전설치</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">상태</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">관리</th>
                       </tr>
@@ -259,6 +268,11 @@ export default function VideosPage() {
                           </td>
                           <td className="px-4 py-3">
                             <span className="text-sm text-gray-600">{formatFileSize(video.file_size)}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge variant={video.is_preinstalled ? 'info' : 'default'}>
+                              {video.is_preinstalled ? '설치됨' : '-'}
+                            </Badge>
                           </td>
                           <td className="px-4 py-3">
                             <Badge variant={video.is_active ? 'success' : 'default'}>
@@ -407,6 +421,20 @@ export default function VideosPage() {
                       min="0"
                     />
                   </div>
+                </div>
+
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="is_preinstalled"
+                    name="is_preinstalled"
+                    checked={formData.is_preinstalled}
+                    onChange={handleInputChange}
+                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="is_preinstalled" className="ml-2 block text-sm text-gray-700">
+                    디바이스 사전 설치 비디오
+                  </label>
                 </div>
               </div>
 

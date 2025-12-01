@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS videos (
     thumbnail_url VARCHAR(1000),                      -- 썸네일 URL (선택사항)
     duration INTEGER,                                  -- 비디오 길이 (초)
     file_size BIGINT,                                  -- 파일 크기 (바이트)
+    is_preinstalled BOOLEAN DEFAULT false,            -- 디바이스 사전 설치 여부
     is_active BOOLEAN DEFAULT true,                   -- 활성 상태
     sort_order INTEGER DEFAULT 0,                     -- 정렬 순서
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

@@ -11,9 +11,9 @@ export class VideoModel {
     const sql = `
       INSERT INTO videos (
         id, filename, title, description, file_url, thumbnail_url,
-        duration, file_size, sort_order, created_at, updated_at
+        duration, file_size, is_preinstalled, sort_order, created_at, updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
       RETURNING *
     `;
     const rows = await query<Video>(sql, [
@@ -25,6 +25,7 @@ export class VideoModel {
       data.thumbnail_url || null,
       data.duration || null,
       data.file_size || null,
+      data.is_preinstalled || false,
       data.sort_order || 0,
     ]);
     return rows[0];
@@ -65,7 +66,7 @@ export class VideoModel {
    */
   static async getActiveVideos(): Promise<Video[]> {
     const sql = `
-      SELECT id, index, filename, title, description, file_url, thumbnail_url, duration, file_size
+      SELECT id, index, filename, title, description, file_url, thumbnail_url, duration, file_size, is_preinstalled
       FROM videos
       WHERE is_active = true
       ORDER BY sort_order ASC, index ASC
@@ -108,6 +109,10 @@ export class VideoModel {
     if (data.file_size !== undefined) {
       fields.push(`file_size = $${paramIndex++}`);
       values.push(data.file_size);
+    }
+    if (data.is_preinstalled !== undefined) {
+      fields.push(`is_preinstalled = $${paramIndex++}`);
+      values.push(data.is_preinstalled);
     }
     if (data.is_active !== undefined) {
       fields.push(`is_active = $${paramIndex++}`);

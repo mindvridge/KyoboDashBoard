@@ -1224,7 +1224,8 @@ Unity에서 서버에 등록된 비디오 콘텐츠 목록을 조회할 수 있�
             "file_url": "https://example.com/videos/hangang_vr_tour.mp4",
             "thumbnail_url": "https://example.com/thumbnails/hangang.jpg",
             "duration": 180,
-            "file_size": 1073741824
+            "file_size": 1073741824,
+            "is_preinstalled": true
         },
         {
             "id": "550e8400-e29b-41d4-a716-446655440002",
@@ -1235,7 +1236,8 @@ Unity에서 서버에 등록된 비디오 콘텐츠 목록을 조회할 수 있�
             "file_url": "https://example.com/videos/seoul_timelapse.mp4",
             "thumbnail_url": "https://example.com/thumbnails/seoul.jpg",
             "duration": 240,
-            "file_size": 2147483648
+            "file_size": 2147483648,
+            "is_preinstalled": false
         }
     ],
     "count": 2
@@ -1266,7 +1268,8 @@ Unity에서 서버에 등록된 비디오 콘텐츠 목록을 조회할 수 있�
         "file_url": "https://example.com/videos/hangang_vr_tour.mp4",
         "thumbnail_url": "https://example.com/thumbnails/hangang.jpg",
         "duration": 180,
-        "file_size": 1073741824
+        "file_size": 1073741824,
+        "is_preinstalled": true
     }
 }
 ```
@@ -1294,7 +1297,8 @@ Unity에서 서버에 등록된 비디오 콘텐츠 목록을 조회할 수 있�
         "file_url": "https://example.com/videos/hangang_vr_tour.mp4",
         "thumbnail_url": "https://example.com/thumbnails/hangang.jpg",
         "duration": 180,
-        "file_size": 1073741824
+        "file_size": 1073741824,
+        "is_preinstalled": true
     }
 ]
 ```
@@ -1316,6 +1320,7 @@ public class Video
     public string thumbnail_url;// 썸네일 URL
     public int duration;        // 비디오 길이 (초)
     public long file_size;      // 파일 크기 (바이트)
+    public bool is_preinstalled;// 디바이스 사전 설치 여부
 }
 
 [Serializable]
@@ -1432,6 +1437,7 @@ public class Video
     public string thumbnail_url;
     public int duration;
     public long file_size;
+    public bool is_preinstalled;  // 디바이스 사전 설치 여부
 }
 
 [Serializable]
@@ -1614,13 +1620,14 @@ public class VideoPlayer : MonoBehaviour
 
 ---
 
-**문서 버전**: 1.1.0
-**최종 수정**: 2024-12-01
+**문서 버전**: 1.2.0
+**최종 수정**: 2025-12-01
 **작성자**: KyoboDashBoard Team
 
 ### 변경 이력
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|----------|
+| 1.2.0 | 2025-12-01 | 비디오 is_preinstalled (사전 설치 여부) 필드 추가 |
 | 1.1.0 | 2024-12-01 | 비디오 콘텐츠 API 섹션 추가 |
 | 1.0.0 | 2024-12-01 | 최초 문서 작성 |
