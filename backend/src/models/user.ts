@@ -58,7 +58,7 @@ export class UserModel {
     };
   }
 
-  // Create new user (for registration if needed)
+  // Create new user
   static async create(data: {
     email: string;
     username: string;
@@ -72,10 +72,103 @@ export class UserModel {
       `INSERT INTO users (email, username, password_hash, name, role)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [data.email, data.username, passwordHash, data.name, data.role || 'user']
+      [data.email, data.username, passwordHash, data.name, data.role || 'admin']
     );
 
     logger.info('New user created', { email: data.email, username: data.username });
     return result.rows[0];
+  }
+
+  // Get all users
+  static async findAll(): Promise<User[]> {
+    const result = await pool.query(
+      'SELECT * FROM users ORDER BY created_at DESC'
+    );
+    return result.rows;
+  }
+
+  // Update user
+  static async update(id: string, data: {
+    email?: string;
+    username?: string;
+    name?: string;
+    role?: 'admin' | 'user';
+    is_active?: boolean;
+  }): Promise<User | null> {
+    const fields: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
+
+    if (data.email !== undefined) {
+      fields.push(`email = $${paramCount++}`);
+      values.push(data.email);
+    }
+    if (data.username !== undefined) {
+      fields.push(`username = $${paramCount++}`);
+      values.push(data.username);
+    }
+    if (data.name !== undefined) {
+      fields.push(`name = $${paramCount++}`);
+      values.push(data.name);
+    }
+    if (data.role !== undefined) {
+      fields.push(`role = $${paramCount++}`);
+      values.push(data.role);
+    }
+    if (data.is_active !== undefined) {
+      fields.push(`is_active = $${paramCount++}`);
+      values.push(data.is_active);
+    }
+
+    if (fields.length === 0) return this.findById(id);
+
+    fields.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+
+    const result = await pool.query(
+      `UPDATE users SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+      values
+    );
+
+    if (result.rows[0]) {
+      logger.info('User updated', { userId: id });
+    }
+    return result.rows[0] || null;
+  }
+
+  // Update password
+  static async updatePassword(userId: string, newPassword: string): Promise<void> {
+    const passwordHash = await this.hashPassword(newPassword);
+    await pool.query(
+      'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [passwordHash, userId]
+    );
+    logger.info('Password updated', { userId });
+  }
+
+  // Delete user (soft delete)
+  static async delete(id: string): Promise<boolean> {
+    const result = await pool.query(
+      'UPDATE users SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING id',
+      [id]
+    );
+    if (result.rowCount && result.rowCount > 0) {
+      logger.info('User deleted', { userId: id });
+      return true;
+    }
+    return false;
+  }
+
+  // Hard delete user
+  static async hardDelete(id: string): Promise<boolean> {
+    const result = await pool.query(
+      'DELETE FROM users WHERE id = $1 RETURNING id',
+      [id]
+    );
+    if (result.rowCount && result.rowCount > 0) {
+      logger.info('User permanently deleted', { userId: id });
+      return true;
+    }
+    return false;
   }
 }

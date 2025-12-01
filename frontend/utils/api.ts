@@ -170,3 +170,46 @@ export const authApi = {
       },
     }),
 };
+
+// Helper function for authenticated requests
+function getAuthHeaders(): HeadersInit {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function fetchApiAuth<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  return fetchApi<T>(endpoint, {
+    ...options,
+    headers: {
+      ...getAuthHeaders(),
+      ...options?.headers,
+    },
+  });
+}
+
+// Admin API
+export const adminApi = {
+  getUsers: () =>
+    fetchApiAuth<{ success: boolean; data: any[]; count: number }>('/admin/users'),
+  getUserById: (id: string) =>
+    fetchApiAuth<{ success: boolean; data: any }>(`/admin/users/${id}`),
+  createUser: (data: { email: string; username: string; password: string; name?: string; role?: string }) =>
+    fetchApiAuth<{ success: boolean; data: any }>('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateUser: (id: string, data: { email?: string; username?: string; name?: string; role?: string; is_active?: boolean }) =>
+    fetchApiAuth<{ success: boolean; data: any }>(`/admin/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  updateUserPassword: (id: string, password: string) =>
+    fetchApiAuth<{ success: boolean; message: string }>(`/admin/users/${id}/password`, {
+      method: 'PATCH',
+      body: JSON.stringify({ password }),
+    }),
+  deleteUser: (id: string) =>
+    fetchApiAuth<{ success: boolean; message: string }>(`/admin/users/${id}`, {
+      method: 'DELETE',
+    }),
+};

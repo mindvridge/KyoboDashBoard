@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Bell, RefreshCw, Search } from 'lucide-react';
+import { Bell, RefreshCw, LogOut, User } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface HeaderProps {
   title: string;
@@ -14,6 +14,7 @@ interface HeaderProps {
 
 export function Header({ title, alertCount = 0, onRefresh, isLoading }: HeaderProps) {
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const { user, logout } = useAuth();
 
   const handleRefresh = async () => {
     if (onRefresh) {
@@ -59,6 +60,25 @@ export function Header({ title, alertCount = 0, onRefresh, isLoading }: HeaderPr
           <div className="flex items-center space-x-2 px-3 py-1.5 bg-gray-100 rounded-lg">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
             <span className="text-sm text-gray-600">실시간 연결됨</span>
+          </div>
+
+          {/* User Info & Logout */}
+          <div className="flex items-center space-x-2 pl-3 border-l border-gray-200">
+            <div className="flex items-center space-x-2 px-3 py-1.5 bg-primary-50 rounded-lg">
+              <User className="w-4 h-4 text-primary-600" />
+              <span className="text-sm font-medium text-primary-700">
+                {user?.name || user?.username || '관리자'}
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={logout}
+              className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+            >
+              <LogOut className="w-4 h-4 mr-1" />
+              로그아웃
+            </Button>
           </div>
         </div>
       </div>

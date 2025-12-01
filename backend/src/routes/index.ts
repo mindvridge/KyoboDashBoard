@@ -6,6 +6,7 @@ import statsRoutes from './stats';
 import spaceRoutes from './spaces';
 import videoRoutes from './videos';
 import userAuthRoutes from './userAuth';
+import adminRoutes from './admin';
 
 const router = Router();
 
@@ -20,6 +21,7 @@ router.get('/health', (req, res) => {
 
 // API routes
 router.use('/auth', userAuthRoutes);
+router.use('/admin', adminRoutes);
 router.use('/devices', deviceRoutes);
 router.use('/sessions', sessionRoutes);
 router.use('/logs', logRoutes);

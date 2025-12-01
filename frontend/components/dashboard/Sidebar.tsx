@@ -12,6 +12,7 @@ import {
   Settings,
   Bell,
   Video,
+  Users,
 } from 'lucide-react';
 
 const navigation = [
@@ -22,6 +23,7 @@ const navigation = [
   { name: '공간 관리', href: '/spaces', icon: MapPin },
   { name: '기기 관리', href: '/devices', icon: Smartphone },
   { name: '알림', href: '/alerts', icon: Bell },
+  { name: '관리자 관리', href: '/admin', icon: Users },
 ];
 
 export function Sidebar() {
