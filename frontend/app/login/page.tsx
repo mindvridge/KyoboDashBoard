@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -107,24 +106,6 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
-
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <div className="flex flex-col sm:flex-row justify-center gap-4 text-sm">
-                <Link
-                  href="/find-username"
-                  className="text-primary-600 hover:text-primary-700 hover:underline text-center"
-                >
-                  아이디 찾기
-                </Link>
-                <span className="hidden sm:inline text-gray-300">|</span>
-                <Link
-                  href="/forgot-password"
-                  className="text-primary-600 hover:text-primary-700 hover:underline text-center"
-                >
-                  비밀번호 찾기
-                </Link>
-              </div>
-            </div>
           </CardContent>
         </Card>
 

@@ -163,26 +163,6 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  forgotPassword: (data: { email: string }) =>
-    fetchApi<{ success: boolean; message: string }>('/auth/forgot-password', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-  resetPassword: (data: { token: string; password: string }) =>
-    fetchApi<{ success: boolean; message: string }>('/auth/reset-password', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-  findUsername: (data: { email: string }) =>
-    fetchApi<{ success: boolean; message: string }>('/auth/find-username', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-  verifyToken: (data: { token: string }) =>
-    fetchApi<{ success: boolean; valid: boolean }>('/auth/verify-token', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
   getMe: (token: string) =>
     fetchApi<{ success: boolean; data: any }>('/auth/me', {
       headers: {

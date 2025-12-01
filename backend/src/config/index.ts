@@ -56,14 +56,6 @@ export const config = {
   logging: {
     level: process.env.LOG_LEVEL || 'debug',
   },
-
-  web3forms: {
-    accessKey: process.env.WEB3FORMS_ACCESS_KEY || '',
-  },
-
-  frontend: {
-    url: process.env.FRONTEND_URL || 'https://kyobo-dash-board.vercel.app',
-  },
 };
 
 export function validateConfig(): void {

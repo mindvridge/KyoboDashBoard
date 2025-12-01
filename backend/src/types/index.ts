@@ -264,15 +264,6 @@ export interface UserPublic {
   created_at: Date;
 }
 
-export interface PasswordResetToken {
-  id: string;
-  user_id: string;
-  token: string;
-  expires_at: Date;
-  used: boolean;
-  created_at: Date;
-}
-
 export interface UserLoginRequest {
   email: string;
   password: string;
@@ -282,19 +273,6 @@ export interface UserLoginResponse {
   success: boolean;
   user: UserPublic;
   token: string;
-}
-
-export interface ForgotPasswordRequest {
-  email: string;
-}
-
-export interface ResetPasswordRequest {
-  token: string;
-  password: string;
-}
-
-export interface FindUsernameRequest {
-  email: string;
 }
 
 export interface UserJWTPayload {

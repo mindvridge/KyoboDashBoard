@@ -1,11 +1,9 @@
 import { pool } from '../config/database';
-import { User, UserPublic, PasswordResetToken } from '../types';
+import { User, UserPublic } from '../types';
 import bcrypt from 'bcryptjs';
-import crypto from 'crypto';
 import { logger } from '../utils/logger';
 
 const SALT_ROUNDS = 10;
-const RESET_TOKEN_EXPIRY_HOURS = 1;
 
 export class UserModel {
   static async findByEmail(email: string): Promise<User | null> {
@@ -58,53 +56,6 @@ export class UserModel {
       last_login: user.last_login,
       created_at: user.created_at,
     };
-  }
-
-  // Password Reset Token Methods
-  static async createPasswordResetToken(userId: string): Promise<string> {
-    // Invalidate existing tokens for this user
-    await pool.query(
-      'UPDATE password_reset_tokens SET used = true WHERE user_id = $1 AND used = false',
-      [userId]
-    );
-
-    // Generate a random token
-    const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + RESET_TOKEN_EXPIRY_HOURS * 60 * 60 * 1000);
-
-    await pool.query(
-      `INSERT INTO password_reset_tokens (user_id, token, expires_at)
-       VALUES ($1, $2, $3)`,
-      [userId, token, expiresAt]
-    );
-
-    logger.info('Password reset token created', { userId });
-    return token;
-  }
-
-  static async findPasswordResetToken(token: string): Promise<PasswordResetToken | null> {
-    const result = await pool.query(
-      `SELECT * FROM password_reset_tokens
-       WHERE token = $1 AND used = false AND expires_at > CURRENT_TIMESTAMP`,
-      [token]
-    );
-    return result.rows[0] || null;
-  }
-
-  static async usePasswordResetToken(token: string): Promise<void> {
-    await pool.query(
-      'UPDATE password_reset_tokens SET used = true WHERE token = $1',
-      [token]
-    );
-  }
-
-  static async updatePassword(userId: string, newPassword: string): Promise<void> {
-    const passwordHash = await this.hashPassword(newPassword);
-    await pool.query(
-      'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [passwordHash, userId]
-    );
-    logger.info('Password updated', { userId });
   }
 
   // Create new user (for registration if needed)
