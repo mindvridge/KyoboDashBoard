@@ -57,17 +57,12 @@ export const config = {
     level: process.env.LOG_LEVEL || 'debug',
   },
 
-  email: {
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
-    secure: process.env.SMTP_SECURE === 'true',
-    user: process.env.SMTP_USER || '',
-    password: process.env.SMTP_PASSWORD || '',
-    from: process.env.SMTP_FROM || 'noreply@kyobo.com',
+  web3forms: {
+    accessKey: process.env.WEB3FORMS_ACCESS_KEY || '4258627c-bad2-4191-b7c8-7e9d368aa415',
   },
 
   frontend: {
-    url: process.env.FRONTEND_URL || 'http://localhost:3000',
+    url: process.env.FRONTEND_URL || 'https://kyobo-dash-board.vercel.app',
   },
 };
 
