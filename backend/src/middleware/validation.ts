@@ -110,3 +110,33 @@ export const videoUpdateSchema = z.object({
   is_active: z.boolean().optional(),
   sort_order: z.number().min(0).optional(),
 });
+
+// User Auth validation schemas
+export const userLoginSchema = z.object({
+  email: z.string().email('유효한 이메일 주소를 입력해주세요.'),
+  password: z.string().min(1, '비밀번호를 입력해주세요.'),
+});
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email('유효한 이메일 주소를 입력해주세요.'),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1, '토큰이 필요합니다.'),
+  password: z
+    .string()
+    .min(8, '비밀번호는 최소 8자 이상이어야 합니다.')
+    .max(100, '비밀번호가 너무 깁니다.')
+    .regex(
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+      '비밀번호는 대문자, 소문자, 숫자를 포함해야 합니다.'
+    ),
+});
+
+export const findUsernameSchema = z.object({
+  email: z.string().email('유효한 이메일 주소를 입력해주세요.'),
+});
+
+export const verifyTokenSchema = z.object({
+  token: z.string().min(1, '토큰이 필요합니다.'),
+});

@@ -238,3 +238,69 @@ export interface VideoListResponse {
   data: Video[];
   count: number;
 }
+
+// User Types
+export interface User {
+  id: string;
+  email: string;
+  username: string;
+  password_hash: string;
+  name?: string;
+  role: 'admin' | 'user';
+  is_active: boolean;
+  last_login?: Date;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface UserPublic {
+  id: string;
+  email: string;
+  username: string;
+  name?: string;
+  role: 'admin' | 'user';
+  is_active: boolean;
+  last_login?: Date;
+  created_at: Date;
+}
+
+export interface PasswordResetToken {
+  id: string;
+  user_id: string;
+  token: string;
+  expires_at: Date;
+  used: boolean;
+  created_at: Date;
+}
+
+export interface UserLoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface UserLoginResponse {
+  success: boolean;
+  user: UserPublic;
+  token: string;
+}
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  password: string;
+}
+
+export interface FindUsernameRequest {
+  email: string;
+}
+
+export interface UserJWTPayload {
+  user_id: string;
+  email: string;
+  role: string;
+  iat: number;
+  exp: number;
+}

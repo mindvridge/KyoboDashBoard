@@ -166,3 +166,38 @@ export interface VideoUpdateRequest {
   is_active?: boolean;
   sort_order?: number;
 }
+
+// User Auth Types
+export interface User {
+  id: string;
+  email: string;
+  username: string;
+  name?: string;
+  role: 'admin' | 'user';
+  is_active: boolean;
+  last_login?: string;
+  created_at: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  user: User;
+  token: string;
+}
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  password: string;
+}
+
+export interface FindUsernameRequest {
+  email: string;
+}
