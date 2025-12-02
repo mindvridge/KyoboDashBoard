@@ -6,7 +6,16 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { authApi } from '@/utils/api';
-import { LogIn, Mail, Lock, AlertCircle } from 'lucide-react';
+import { LogIn, Mail, Lock, AlertCircle, Zap } from 'lucide-react';
+
+// Development mode user for when backend is unavailable
+const DEV_USER = {
+  id: 'dev-user-001',
+  email: 'admin@kyobo.com',
+  username: 'admin',
+  name: '관리자',
+  role: 'admin' as const,
+};
 
 export default function LoginPage() {
   const router = useRouter();
@@ -36,6 +45,18 @@ export default function LoginPage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Development mode login (bypasses backend authentication)
+  const handleDevLogin = () => {
+    // Create a fake token for development
+    const devToken = 'dev-token-' + Date.now();
+
+    localStorage.setItem('auth_token', devToken);
+    localStorage.setItem('user', JSON.stringify(DEV_USER));
+    localStorage.setItem('dev_mode', 'true');
+
+    router.push('/');
   };
 
   return (
@@ -106,6 +127,21 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
+
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={handleDevLogin}
+              >
+                <Zap className="w-4 h-4 mr-2" />
+                개발 모드로 접속
+              </Button>
+              <p className="text-xs text-gray-500 text-center mt-2">
+                백엔드 연결 없이 대시보드 UI를 확인합니다
+              </p>
+            </div>
           </CardContent>
         </Card>
 
