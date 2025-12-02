@@ -41,16 +41,14 @@ export class SessionModel {
     return rows[0] || null;
   }
 
-  static async getActiveSessions(): Promise<(Session & { device_info: string; space_name: string })[]> {
+  static async getActiveSessions(): Promise<(Session & { device_info: string })[]> {
     const sql = `
       SELECT
         s.*,
         d.device_id as device_info,
-        COALESCE(sp.name, 'Unknown') as space_name,
         EXTRACT(EPOCH FROM (NOW() - s.start_time))::integer as current_duration
       FROM sessions s
       JOIN devices d ON s.device_id = d.id
-      LEFT JOIN spaces sp ON d.space_id = sp.id
       WHERE s.is_active = true
       ORDER BY s.start_time DESC
     `;
@@ -60,23 +58,18 @@ export class SessionModel {
   static async getSessionsByDateRange(
     startDate: Date,
     endDate: Date,
-    spaceId?: string,
+    _spaceId?: string,  // 더 이상 사용되지 않음
     deviceId?: string
   ): Promise<Session[]> {
     let sql = `
-      SELECT s.*, d.device_id as device_info, sp.name as space_name
+      SELECT s.*, d.device_id as device_info
       FROM sessions s
       JOIN devices d ON s.device_id = d.id
-      LEFT JOIN spaces sp ON d.space_id = sp.id
       WHERE s.start_time >= $1 AND s.start_time <= $2
     `;
     const params: unknown[] = [startDate, endDate];
     let paramIndex = 3;
 
-    if (spaceId) {
-      sql += ` AND d.space_id = $${paramIndex++}`;
-      params.push(spaceId);
-    }
     if (deviceId) {
       sql += ` AND d.id = $${paramIndex++}`;
       params.push(deviceId);
@@ -135,7 +128,6 @@ export class SessionModel {
       SELECT
         s.*,
         d.device_id as device_info,
-        sp.name as space_name,
         json_agg(
           json_build_object(
             'id', cl.id,
@@ -148,10 +140,9 @@ export class SessionModel {
         ) FILTER (WHERE cl.id IS NOT NULL) as logs
       FROM sessions s
       JOIN devices d ON s.device_id = d.id
-      LEFT JOIN spaces sp ON d.space_id = sp.id
       LEFT JOIN content_logs cl ON cl.session_id = s.id
       WHERE s.id = $1
-      GROUP BY s.id, d.device_id, sp.name
+      GROUP BY s.id, d.device_id
     `;
     const rows = await query(sql, [sessionId]);
     return rows[0] || null;

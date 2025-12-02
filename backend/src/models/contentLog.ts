@@ -130,7 +130,7 @@ export class ContentLogModel {
     startDate: Date,
     endDate: Date,
     options?: {
-      spaceId?: string;
+      spaceId?: string;  // 더 이상 사용되지 않음
       deviceId?: string;
       contentId?: string;
       actionType?: ContentActionType;
@@ -139,20 +139,15 @@ export class ContentLogModel {
     }
   ) {
     let sql = `
-      SELECT cl.*, s.id as session_id, d.device_id as device_info, sp.name as space_name
+      SELECT cl.*, s.id as session_id, d.device_id as device_info
       FROM content_logs cl
       JOIN sessions s ON cl.session_id = s.id
       JOIN devices d ON s.device_id = d.id
-      LEFT JOIN spaces sp ON d.space_id = sp.id
       WHERE cl.timestamp >= $1 AND cl.timestamp <= $2
     `;
     const params: unknown[] = [startDate, endDate];
     let paramIndex = 3;
 
-    if (options?.spaceId) {
-      sql += ` AND d.space_id = $${paramIndex++}`;
-      params.push(options.spaceId);
-    }
     if (options?.deviceId) {
       sql += ` AND d.id = $${paramIndex++}`;
       params.push(options.deviceId);

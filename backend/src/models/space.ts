@@ -64,15 +64,14 @@ export class SpaceModel {
   }
 
   static async getWithStats(): Promise<(Space & { device_count: number; active_sessions: number })[]> {
+    // space_id가 devices에서 제거되어 더 이상 디바이스-공간 연결 불가
+    // 공간 목록만 반환 (device_count, active_sessions는 0으로)
     const sql = `
       SELECT
         s.*,
-        COUNT(DISTINCT d.id) as device_count,
-        COUNT(DISTINCT CASE WHEN sess.is_active = true THEN sess.id END) as active_sessions
+        0 as device_count,
+        0 as active_sessions
       FROM spaces s
-      LEFT JOIN devices d ON d.space_id = s.id
-      LEFT JOIN sessions sess ON sess.device_id = d.id
-      GROUP BY s.id
       ORDER BY s.created_at DESC
     `;
     return query(sql);

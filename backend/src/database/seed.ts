@@ -41,11 +41,11 @@ async function seedDatabase() {
 
     // Create sample devices
     const devices = [
-      { device_id: 'VR-DEVICE-001', mac_address: 'AA:BB:CC:DD:EE:01', space_index: 0, model: 'Meta Quest 3' },
-      { device_id: 'VR-DEVICE-002', mac_address: 'AA:BB:CC:DD:EE:02', space_index: 0, model: 'Meta Quest 3' },
-      { device_id: 'VR-DEVICE-003', mac_address: 'AA:BB:CC:DD:EE:03', space_index: 1, model: 'Meta Quest 3' },
-      { device_id: 'VR-DEVICE-004', mac_address: 'AA:BB:CC:DD:EE:04', space_index: 1, model: 'Meta Quest Pro' },
-      { device_id: 'VR-DEVICE-005', mac_address: 'AA:BB:CC:DD:EE:05', space_index: 2, model: 'Meta Quest 3' },
+      { device_id: 'VR-DEVICE-001', mac_address: 'AA:BB:CC:DD:EE:01', model: 'Meta Quest 3' },
+      { device_id: 'VR-DEVICE-002', mac_address: 'AA:BB:CC:DD:EE:02', model: 'Meta Quest 3' },
+      { device_id: 'VR-DEVICE-003', mac_address: 'AA:BB:CC:DD:EE:03', model: 'Meta Quest 3' },
+      { device_id: 'VR-DEVICE-004', mac_address: 'AA:BB:CC:DD:EE:04', model: 'Meta Quest Pro' },
+      { device_id: 'VR-DEVICE-005', mac_address: 'AA:BB:CC:DD:EE:05', model: 'Meta Quest 3' },
     ];
 
     const deviceIds: string[] = [];
@@ -53,10 +53,10 @@ async function seedDatabase() {
     for (const device of devices) {
       const id = uuidv4();
       await client.query(
-        `INSERT INTO devices (id, device_id, mac_address, space_id, model)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO devices (id, device_id, mac_address, model)
+         VALUES ($1, $2, $3, $4)
          ON CONFLICT (device_id) DO NOTHING`,
-        [id, device.device_id, device.mac_address, spaceIds[device.space_index], device.model]
+        [id, device.device_id, device.mac_address, device.model]
       );
       deviceIds.push(id);
       console.log(`Created device: ${device.device_id}`);
