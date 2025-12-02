@@ -14,13 +14,25 @@ export class DeviceController {
     try {
       const data: DeviceRegistrationRequest = req.body;
 
+      logger.info('Device registration request', { device_id: data.device_id });
+
       const result = await DeviceService.registerOrLogin(data);
 
+      logger.info('Device registration success', {
+        device_id: data.device_id,
+        is_new: result.is_new_device,
+        has_token: !!result.token,
+      });
+
+      // 응답 구조 단순화 - token을 최상위 레벨로
       res.status(result.is_new_device ? 201 : 200).json({
         success: true,
-        data: result,
+        device: result.device,
+        token: result.token,
+        is_new_device: result.is_new_device,
       });
     } catch (error) {
+      logger.error('Device registration failed', { error });
       next(error);
     }
   }
