@@ -1,4 +1,6 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://kyobodashboard-production.up.railway.app';
+const rawApiBase = process.env.NEXT_PUBLIC_API_URL || 'https://kyobodashboard-production.up.railway.app';
+// Remove trailing /api or /api/ if present to avoid duplication
+const API_BASE = rawApiBase.replace(/\/api\/?$/, '');
 
 export async function fetchApi<T>(
   endpoint: string,
