@@ -89,12 +89,12 @@ export default function AnalyticsPage() {
     const endDate = new Date();
     const startDate = subDays(endDate, parseInt(dateRange));
     const url = type === 'sessions'
-      ? statsApi.exportSessions({
+      ? statsApi.getExportSessionsUrl({
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
           format: 'csv',
         })
-      : statsApi.exportLogs({
+      : statsApi.getExportLogsUrl({
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
           format: 'csv',
