@@ -1,0 +1,54 @@
+{
+    "success": true,
+    "data": [
+        {
+            "id": "550e8400-e29b-41d4-a716-446655440001",
+            "index": 1,
+            "filename": "intro_video.mp4",
+            "title": "교보문고 VR 소개",
+            "description": "교보문고 VR 체험 안내 영상",
+            "file_url": "https://example.com/videos/intro_video.mp4",
+            "thumbnail_url": "https://example.com/thumbnails/intro_thumb.jpg",
+            "duration": 120,
+            "file_size": 15728640,
+            "is_preinstalled": true,
+            "is_active": true,
+            "sort_order": 1,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        },
+        {
+            "id": "550e8400-e29b-41d4-a716-446655440002",
+            "index": 2,
+            "filename": "tutorial.mp4",
+            "title": "VR 조작 튜토리얼",
+            "description": "VR 기기 사용법 안내",
+            "file_url": "https://example.com/videos/tutorial.mp4",
+            "thumbnail_url": "https://example.com/thumbnails/tutorial_thumb.jpg",
+            "duration": 180,
+            "file_size": 20971520,
+            "is_preinstalled": true,
+            "is_active": true,
+            "sort_order": 2,
+            "created_at": "2024-01-02T00:00:00Z",
+            "updated_at": "2024-01-02T00:00:00Z"
+        },
+        {
+            "id": "550e8400-e29b-41d4-a716-446655440003",
+            "index": 3,
+            "filename": "content_showcase.mp4",
+            "title": "콘텐츠 하이라이트",
+            "description": "다양한 VR 콘텐츠 미리보기",
+            "file_url": "https://example.com/videos/content_showcase.mp4",
+            "thumbnail_url": "https://example.com/thumbnails/showcase_thumb.jpg",
+            "duration": 300,
+            "file_size": 52428800,
+            "is_preinstalled": false,
+            "is_active": true,
+            "sort_order": 3,
+            "created_at": "2024-01-03T00:00:00Z",
+            "updated_at": "2024-01-03T00:00:00Z"
+        }
+    ],
+    "count": 3
+}
