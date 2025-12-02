@@ -23,10 +23,7 @@ export interface Space {
 export interface Device {
   id: string;
   device_id: string;
-  mac_address: string;
-  space_id: string;
-  space_name?: string;
-  device_name?: string;
+  mac_address?: string;
   model?: string;
   last_seen: string;
   is_active: boolean;

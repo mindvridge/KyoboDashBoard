@@ -28,9 +28,7 @@ export function validate(schema: ZodSchema) {
 // Validation schemas
 export const deviceRegistrationSchema = z.object({
   device_id: z.string().min(1, 'Device ID is required').max(255),
-  mac_address: z.string().min(1, 'MAC address is required').max(50),
-  space_id: z.string().uuid().optional(),
-  device_name: z.string().max(255).optional(),
+  mac_address: z.string().max(50).optional(),
   model: z.string().max(100).optional(),
 });
 

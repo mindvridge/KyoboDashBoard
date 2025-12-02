@@ -15,7 +15,7 @@ export class DeviceService {
    */
   static async registerOrLogin(data: DeviceRegistrationRequest): Promise<DeviceRegistrationResponse> {
     // Check if device already exists
-    let device = await DeviceModel.findByDeviceIdOrMac(data.device_id, data.mac_address);
+    let device = await DeviceModel.findByDeviceId(data.device_id);
     let isNewDevice = false;
 
     if (device) {
@@ -27,8 +27,6 @@ export class DeviceService {
       device = await DeviceModel.create({
         device_id: data.device_id,
         mac_address: data.mac_address,
-        space_id: data.space_id,
-        device_name: data.device_name,
         model: data.model,
       });
       isNewDevice = true;
@@ -36,7 +34,7 @@ export class DeviceService {
     }
 
     // Generate JWT token
-    const token = generateToken(device.id, device.space_id || 'default');
+    const token = generateToken(device.id);
 
     // Clear cache
     await cacheDelete(`device:${device.id}`);
@@ -65,8 +63,8 @@ export class DeviceService {
     return DeviceModel.findByDeviceId(deviceId);
   }
 
-  static async getAllDevices(spaceId?: string): Promise<Device[]> {
-    return DeviceModel.findAll(spaceId);
+  static async getAllDevices(): Promise<Device[]> {
+    return DeviceModel.findAll();
   }
 
   static async getActiveDevices(): Promise<Device[]> {

@@ -8,7 +8,6 @@ import { logger } from '../utils/logger';
 export interface AuthenticatedRequest extends Request {
   device?: {
     device_id: string;
-    space_id: string;
   };
 }
 
@@ -30,7 +29,6 @@ export function authenticateDevice(
 
     req.device = {
       device_id: decoded.device_id,
-      space_id: decoded.space_id,
     };
 
     next();
@@ -47,9 +45,9 @@ export function authenticateDevice(
   }
 }
 
-export function generateToken(deviceId: string, spaceId: string): string {
+export function generateToken(deviceId: string): string {
   return jwt.sign(
-    { device_id: deviceId, space_id: spaceId },
+    { device_id: deviceId },
     config.jwt.secret,
     { expiresIn: config.jwt.expiresIn } as jwt.SignOptions
   );
@@ -77,7 +75,6 @@ export function optionalAuth(
 
     req.device = {
       device_id: decoded.device_id,
-      space_id: decoded.space_id,
     };
   } catch {
     // Ignore token errors for optional auth

@@ -12,9 +12,7 @@ export interface Space {
 export interface Device {
   id: string;
   device_id: string;
-  mac_address: string;
-  space_id: string;
-  device_name?: string;
+  mac_address?: string;
   model?: string;
   last_seen: Date;
   is_active: boolean;
@@ -67,9 +65,7 @@ export interface ErrorLog {
 // API Request/Response Types
 export interface DeviceRegistrationRequest {
   device_id: string;
-  mac_address: string;
-  space_id?: string;
-  device_name?: string;
+  mac_address?: string;
   model?: string;
 }
 
@@ -151,7 +147,6 @@ export interface HourlySession {
 // JWT Payload
 export interface JWTPayload {
   device_id: string;
-  space_id: string;
   iat: number;
   exp: number;
 }

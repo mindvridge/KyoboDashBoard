@@ -27,12 +27,11 @@ export class DeviceController {
 
   /**
    * GET /api/devices
-   * Get all devices (optionally filtered by space)
+   * Get all devices
    */
   static async getAll(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { space_id } = req.query;
-      const devices = await DeviceService.getAllDevices(space_id as string);
+      const devices = await DeviceService.getAllDevices();
 
       res.json({
         success: true,
