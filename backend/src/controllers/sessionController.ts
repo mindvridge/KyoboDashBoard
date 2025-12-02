@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { SessionService } from '../services/sessionService';
 import { AuthenticatedRequest } from '../middleware/auth';
+import { logger } from '../utils/logger';
 
 export class SessionController {
   /**
@@ -17,13 +18,23 @@ export class SessionController {
         return;
       }
 
+      logger.info('Session start request', { device_id: req.device.device_id });
+
       const result = await SessionService.startSession(req.device.device_id);
 
+      logger.info('Session started', {
+        device_id: req.device.device_id,
+        session_id: result.session_id,
+      });
+
+      // 응답 구조 단순화 - session_id를 최상위 레벨로
       res.status(201).json({
         success: true,
-        data: result,
+        session_id: result.session_id,
+        start_time: result.start_time,
       });
     } catch (error) {
+      logger.error('Session start failed', { error });
       next(error);
     }
   }
@@ -38,9 +49,12 @@ export class SessionController {
 
       const result = await SessionService.endSession(session_id, lobby_time);
 
+      // 응답 구조 단순화
       res.json({
         success: true,
-        data: result,
+        session_id: result.session_id,
+        duration: result.duration,
+        content_count: result.content_count,
       });
     } catch (error) {
       next(error);
