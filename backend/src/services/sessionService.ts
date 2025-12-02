@@ -134,8 +134,8 @@ export class SessionService {
     return SessionModel.getSessionWithLogs(sessionId);
   }
 
-  static async getActiveSessions(): Promise<Array<Session & { device_info: string; space_name: string }>> {
-    const cached = await cacheGet<Array<Session & { device_info: string; space_name: string }>>('active_sessions');
+  static async getActiveSessions(): Promise<Array<Session & { device_info: string }>> {
+    const cached = await cacheGet<Array<Session & { device_info: string }>>('active_sessions');
     if (cached) return cached;
 
     const sessions = await SessionModel.getActiveSessions();

@@ -121,7 +121,6 @@ export class StatsService {
     return sessions.map((s: any) => ({
       session_id: s.id,
       device_id: s.device_info,
-      space_name: s.space_name,
       start_time: s.start_time,
       end_time: s.end_time,
       duration_seconds: s.duration,
@@ -139,7 +138,6 @@ export class StatsService {
       log_id: l.id,
       session_id: l.session_id,
       device_id: l.device_info,
-      space_name: l.space_name,
       content_id: l.content_id,
       content_name: l.content_name,
       action_type: l.action_type,
