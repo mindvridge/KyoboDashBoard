@@ -347,7 +347,16 @@ export default function AdminPage() {
                   required
                   minLength={8}
                 />
-                <p className="text-xs text-gray-500 mt-1">최소 8자 이상</p>
+                <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                  <p>비밀번호 요구사항:</p>
+                  <ul className="list-disc list-inside ml-1">
+                    <li className={formData.password.length >= 8 ? 'text-green-600' : ''}>최소 8자 이상</li>
+                    <li className={/[A-Z]/.test(formData.password) ? 'text-green-600' : ''}>대문자 1개 이상</li>
+                    <li className={/[a-z]/.test(formData.password) ? 'text-green-600' : ''}>소문자 1개 이상</li>
+                    <li className={/[0-9]/.test(formData.password) ? 'text-green-600' : ''}>숫자 1개 이상</li>
+                    <li className={/[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? 'text-green-600' : ''}>특수문자 1개 이상</li>
+                  </ul>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">이름</label>
@@ -448,7 +457,16 @@ export default function AdminPage() {
                   required
                   minLength={8}
                 />
-                <p className="text-xs text-gray-500 mt-1">최소 8자 이상</p>
+                <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                  <p>비밀번호 요구사항:</p>
+                  <ul className="list-disc list-inside ml-1">
+                    <li className={newPassword.length >= 8 ? 'text-green-600' : ''}>최소 8자 이상</li>
+                    <li className={/[A-Z]/.test(newPassword) ? 'text-green-600' : ''}>대문자 1개 이상</li>
+                    <li className={/[a-z]/.test(newPassword) ? 'text-green-600' : ''}>소문자 1개 이상</li>
+                    <li className={/[0-9]/.test(newPassword) ? 'text-green-600' : ''}>숫자 1개 이상</li>
+                    <li className={/[!@#$%^&*(),.?":{}|<>]/.test(newPassword) ? 'text-green-600' : ''}>특수문자 1개 이상</li>
+                  </ul>
+                </div>
               </div>
               <div className="flex justify-end space-x-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setShowPasswordModal(false)}>

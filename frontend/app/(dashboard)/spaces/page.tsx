@@ -19,8 +19,8 @@ export default function SpacesPage() {
         if (response.success) {
           setSpaces(response.data);
         }
-      } catch (error) {
-        console.error('Failed to fetch spaces:', error);
+      } catch {
+        // Error handled silently
       } finally {
         setIsLoading(false);
       }

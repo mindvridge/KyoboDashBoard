@@ -37,8 +37,8 @@ export function RecentLogs() {
         if (response.success) {
           setLogs(response.data);
         }
-      } catch (error) {
-        console.error('Failed to fetch logs:', error);
+      } catch {
+        // Error handled silently
       } finally {
         setIsLoading(false);
       }

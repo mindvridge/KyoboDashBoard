@@ -60,8 +60,7 @@ export default function VideosPage() {
       if (response.success) {
         setVideos(response.data);
       }
-    } catch (err) {
-      console.error('Failed to fetch videos:', err);
+    } catch {
       setError('비디오 목록을 불러오는데 실패했습니다.');
     } finally {
       setIsLoading(false);
@@ -151,8 +150,7 @@ export default function VideosPage() {
     try {
       await videosApi.delete(video.id);
       fetchVideos();
-    } catch (err) {
-      console.error('Failed to delete video:', err);
+    } catch {
       alert('삭제에 실패했습니다.');
     }
   };
@@ -161,8 +159,7 @@ export default function VideosPage() {
     try {
       await videosApi.toggleActive(video.id);
       fetchVideos();
-    } catch (err) {
-      console.error('Failed to toggle video:', err);
+    } catch {
       alert('상태 변경에 실패했습니다.');
     }
   };

@@ -20,8 +20,8 @@ export default function AlertsPage() {
       if (response.success) {
         setAlerts(response.data);
       }
-    } catch (error) {
-      console.error('Failed to fetch alerts:', error);
+    } catch {
+      // Error handled silently
     } finally {
       setIsLoading(false);
     }
@@ -35,8 +35,8 @@ export default function AlertsPage() {
     try {
       await statsApi.resolveAlert(alertId);
       fetchAlerts();
-    } catch (error) {
-      console.error('Failed to resolve alert:', error);
+    } catch {
+      // Error handled silently
     }
   };
 

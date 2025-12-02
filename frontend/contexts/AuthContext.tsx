@@ -47,8 +47,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             localStorage.removeItem('user');
           }
         }
-      } catch (error) {
-        console.error('Auth initialization error:', error);
+      } catch {
+        // Auth initialization error handled silently
       } finally {
         setIsLoading(false);
       }

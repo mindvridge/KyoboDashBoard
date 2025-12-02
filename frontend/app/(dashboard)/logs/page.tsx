@@ -62,8 +62,8 @@ export default function LogsPage() {
         ]);
         if (spacesRes.success) setSpaces(spacesRes.data);
         if (devicesRes.success) setDevices(devicesRes.data);
-      } catch (error) {
-        console.error('Failed to fetch options:', error);
+      } catch {
+        // Error handled silently
       }
     };
     fetchOptions();
@@ -100,8 +100,8 @@ export default function LogsPage() {
 
           setLogs(filteredLogs);
         }
-      } catch (error) {
-        console.error('Failed to fetch logs:', error);
+      } catch {
+        // Error handled silently
       } finally {
         setIsLoading(false);
       }

@@ -1,4 +1,4 @@
-const API_BASE = 'https://kyobodashboard-production.up.railway.app';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://kyobodashboard-production.up.railway.app';
 
 export async function fetchApi<T>(
   endpoint: string,
@@ -22,43 +22,63 @@ export async function fetchApi<T>(
   return response.json();
 }
 
-// Stats API
+// Helper function for authenticated requests (moved up for use in statsApi)
+function getAuthHeaders(): HeadersInit {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function fetchApiAuth<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  return fetchApi<T>(endpoint, {
+    ...options,
+    headers: {
+      ...getAuthHeaders(),
+      ...options?.headers,
+    },
+  });
+}
+
+// Stats API (requires authentication)
 export const statsApi = {
-  getDashboard: () => fetchApi<{ success: boolean; data: any }>('/stats/dashboard'),
+  getDashboard: () => fetchApiAuth<{ success: boolean; data: any }>('/stats/dashboard'),
   getDetailed: (params: { startDate?: string; endDate?: string; spaceId?: string }) => {
     const query = new URLSearchParams();
     if (params.startDate) query.set('start_date', params.startDate);
     if (params.endDate) query.set('end_date', params.endDate);
     if (params.spaceId) query.set('space_id', params.spaceId);
-    return fetchApi<{ success: boolean; data: any }>(`/stats/detailed?${query}`);
+    return fetchApiAuth<{ success: boolean; data: any }>(`/stats/detailed?${query}`);
   },
   getPopular: (params: { startDate?: string; endDate?: string; limit?: number }) => {
     const query = new URLSearchParams();
     if (params.startDate) query.set('start_date', params.startDate);
     if (params.endDate) query.set('end_date', params.endDate);
     if (params.limit) query.set('limit', String(params.limit));
-    return fetchApi<{ success: boolean; data: any[] }>(`/stats/popular?${query}`);
+    return fetchApiAuth<{ success: boolean; data: any[] }>(`/stats/popular?${query}`);
   },
   getDaily: (params: { startDate?: string; endDate?: string }) => {
     const query = new URLSearchParams();
     if (params.startDate) query.set('start_date', params.startDate);
     if (params.endDate) query.set('end_date', params.endDate);
-    return fetchApi<{ success: boolean; data: any[] }>(`/stats/daily?${query}`);
+    return fetchApiAuth<{ success: boolean; data: any[] }>(`/stats/daily?${query}`);
   },
-  getAlerts: () => fetchApi<{ success: boolean; data: any[] }>('/stats/alerts'),
-  resolveAlert: (id: string) => fetchApi(`/stats/alerts/${id}/resolve`, { method: 'POST' }),
-  exportSessions: (params: { startDate?: string; endDate?: string; format?: string }) => {
+  getAlerts: () => fetchApiAuth<{ success: boolean; data: any[] }>('/stats/alerts'),
+  resolveAlert: (id: string) => fetchApiAuth(`/stats/alerts/${id}/resolve`, { method: 'POST' }),
+  getExportSessionsUrl: (params: { startDate?: string; endDate?: string; format?: string }) => {
     const query = new URLSearchParams();
     if (params.startDate) query.set('start_date', params.startDate);
     if (params.endDate) query.set('end_date', params.endDate);
     if (params.format) query.set('format', params.format);
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+    if (token) query.set('token', token);
     return `${API_BASE}/api/stats/export/sessions?${query}`;
   },
-  exportLogs: (params: { startDate?: string; endDate?: string; format?: string }) => {
+  getExportLogsUrl: (params: { startDate?: string; endDate?: string; format?: string }) => {
     const query = new URLSearchParams();
     if (params.startDate) query.set('start_date', params.startDate);
     if (params.endDate) query.set('end_date', params.endDate);
     if (params.format) query.set('format', params.format);
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+    if (token) query.set('token', token);
     return `${API_BASE}/api/stats/export/logs?${query}`;
   },
 };
@@ -170,22 +190,6 @@ export const authApi = {
       },
     }),
 };
-
-// Helper function for authenticated requests
-function getAuthHeaders(): HeadersInit {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-async function fetchApiAuth<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  return fetchApi<T>(endpoint, {
-    ...options,
-    headers: {
-      ...getAuthHeaders(),
-      ...options?.headers,
-    },
-  });
-}
 
 // Admin API
 export const adminApi = {

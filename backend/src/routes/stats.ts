@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { StatsController } from '../controllers/statsController';
+import { authenticateUser } from '../middleware/auth';
 
 const router = Router();
+
+// 모든 Stats 라우트는 인증이 필요합니다
+router.use(authenticateUser);
 
 /**
  * @swagger

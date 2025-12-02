@@ -39,8 +39,8 @@ export function useSocket(options: UseSocketOptions = {}) {
       options.onEvent?.(event);
     });
 
-    socketRef.current.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
+    socketRef.current.on('connect_error', () => {
+      // Connection error handled silently
     });
   }, [options]);
 

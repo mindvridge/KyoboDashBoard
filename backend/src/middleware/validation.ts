@@ -116,3 +116,41 @@ export const userLoginSchema = z.object({
   email: z.string().email('유효한 이메일 주소를 입력해주세요.'),
   password: z.string().min(1, '비밀번호를 입력해주세요.'),
 });
+
+// Password complexity validation
+export const passwordSchema = z.string()
+  .min(8, '비밀번호는 최소 8자 이상이어야 합니다.')
+  .max(100, '비밀번호는 최대 100자까지 가능합니다.')
+  .refine((password) => /[A-Z]/.test(password), {
+    message: '비밀번호에 최소 1개의 대문자가 포함되어야 합니다.',
+  })
+  .refine((password) => /[a-z]/.test(password), {
+    message: '비밀번호에 최소 1개의 소문자가 포함되어야 합니다.',
+  })
+  .refine((password) => /[0-9]/.test(password), {
+    message: '비밀번호에 최소 1개의 숫자가 포함되어야 합니다.',
+  })
+  .refine((password) => /[!@#$%^&*(),.?":{}|<>]/.test(password), {
+    message: '비밀번호에 최소 1개의 특수문자가 포함되어야 합니다.',
+  });
+
+// Admin user management schemas
+export const adminCreateUserSchema = z.object({
+  email: z.string().email('유효한 이메일 주소를 입력해주세요.'),
+  username: z.string().min(3, '사용자명은 최소 3자 이상이어야 합니다.').max(50),
+  password: passwordSchema,
+  name: z.string().max(100).optional(),
+  role: z.enum(['admin', 'viewer']).optional(),
+});
+
+export const adminUpdateUserSchema = z.object({
+  email: z.string().email('유효한 이메일 주소를 입력해주세요.').optional(),
+  username: z.string().min(3, '사용자명은 최소 3자 이상이어야 합니다.').max(50).optional(),
+  name: z.string().max(100).optional(),
+  role: z.enum(['admin', 'viewer']).optional(),
+  is_active: z.boolean().optional(),
+});
+
+export const adminUpdatePasswordSchema = z.object({
+  password: passwordSchema,
+});

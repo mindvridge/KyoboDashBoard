@@ -37,8 +37,8 @@ export default function AnalyticsPage() {
         if (response.success) {
           setSpaces(response.data);
         }
-      } catch (error) {
-        console.error('Failed to fetch spaces:', error);
+      } catch {
+        // Error handled silently
       }
     };
     fetchSpaces();
@@ -76,8 +76,8 @@ export default function AnalyticsPage() {
         if (popularRes.success) {
           setPopularContents(popularRes.data);
         }
-      } catch (error) {
-        console.error('Failed to fetch analytics:', error);
+      } catch {
+        // Error handled silently
       } finally {
         setIsLoading(false);
       }
