@@ -28,9 +28,12 @@ export function validate(schema: ZodSchema) {
 // Validation schemas
 export const deviceRegistrationSchema = z.object({
   device_id: z.string().min(1, 'Device ID is required').max(255),
-  mac_address: z.string().max(50).optional(),
-  model: z.string().max(100).optional(),
-});
+  mac_address: z.string().max(50).nullish(),
+  model: z.string().max(100).nullish(),
+  // 이전 필드들 무시 (하위 호환성)
+  space_id: z.any().optional(),
+  device_name: z.any().optional(),
+}).passthrough();
 
 export const sessionStartSchema = z.object({
   device_id: z.string().min(1, 'Device ID is required'),
