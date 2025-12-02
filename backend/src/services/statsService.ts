@@ -89,7 +89,7 @@ export class StatsService {
   static async getSpaceStats(spaceId: string, startDate: Date, endDate: Date) {
     const [sessions, devices] = await Promise.all([
       SessionModel.getSessionsByDateRange(startDate, endDate, spaceId),
-      DeviceModel.findAll(spaceId),
+      DeviceModel.findAll(),  // space_id 필터 제거됨
     ]);
 
     const totalDuration = sessions.reduce((sum, s) => sum + (s.duration || 0), 0);
