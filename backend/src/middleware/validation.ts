@@ -1,10 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
 import { z, ZodSchema } from 'zod';
 import { ValidationError } from '../utils/errors';
+import { logger } from '../utils/logger';
 
 export function validate(schema: ZodSchema) {
   return (req: Request, _res: Response, next: NextFunction) => {
     try {
+      // 디버그 로깅
+      logger.debug('Validation input', {
+        body: req.body,
+        contentType: req.headers['content-type'],
+        bodyType: typeof req.body,
+      });
+
       schema.parse(req.body);
       next();
     } catch (error) {
@@ -17,6 +25,13 @@ export function validate(schema: ZodSchema) {
           }
           errors[path].push(e.message);
         });
+
+        // 유효성 검사 실패 로깅
+        logger.warn('Validation failed', {
+          body: req.body,
+          errors: error.errors,
+        });
+
         next(new ValidationError('Validation failed', errors));
       } else {
         next(error);
