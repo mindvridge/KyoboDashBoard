@@ -23,7 +23,7 @@ INSERT INTO users (email, username, password_hash, name, role)
 VALUES (
     'admin@kyobo.com',
     'admin',
-    '$2a$10$N9qo8uLOickgx2ZMRZoMy.MqrqN6fNwP3z8sSQHw9D9bK2pB1xKFC',
+    '$2a$10$JwUziNHHNLFPEyPAILIXguixtu.X90QYqrwS3XbZaXEySilPYubci',
     '관리자',
     'admin'
-) ON CONFLICT (email) DO NOTHING;
+) ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash;
