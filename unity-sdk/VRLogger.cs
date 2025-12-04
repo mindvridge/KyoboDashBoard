@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -55,6 +56,11 @@ namespace VRLogDashboard
         private Queue<LogRequest> pendingRequests = new Queue<LogRequest>();
         private bool isProcessingQueue = false;
         private Coroutine heartbeatCoroutine;
+        private Coroutine networkCheckCoroutine;
+        private bool isNetworkAvailable = true;
+        private string localLogFilePath;
+        private const int MAX_RETRY_COUNT = 3;
+        private const float NETWORK_CHECK_INTERVAL = 10f;
         #endregion
 
         #region Events
@@ -97,10 +103,20 @@ namespace VRLogDashboard
             {
                 macAddress = GetMacAddress();
             }
+
+            // Initialize local log file path
+            localLogFilePath = Path.Combine(Application.persistentDataPath, "pending_logs.json");
+            Log($"Local log file path: {localLogFilePath}");
         }
 
         private void Start()
         {
+            // Load any pending logs from local storage
+            LoadPendingLogsFromLocal();
+
+            // Start network monitoring
+            StartNetworkMonitoring();
+
             if (autoLogin)
             {
                 _ = AutoLogin();
@@ -109,6 +125,9 @@ namespace VRLogDashboard
 
         private void OnApplicationQuit()
         {
+            // Save any pending logs to local storage before quit
+            SavePendingLogsToLocal();
+
             if (HasActiveSession)
             {
                 // Synchronous session end on quit
@@ -118,15 +137,28 @@ namespace VRLogDashboard
 
         private void OnApplicationPause(bool pauseStatus)
         {
-            if (pauseStatus && HasActiveSession)
+            if (pauseStatus)
             {
-                // App going to background - end session
-                _ = LogSessionEnd();
+                // App going to background - save pending logs
+                SavePendingLogsToLocal();
+
+                if (HasActiveSession)
+                {
+                    _ = LogSessionEnd();
+                }
             }
-            else if (!pauseStatus && IsLoggedIn && !HasActiveSession)
+            else
             {
-                // App resuming - start new session
-                _ = StartSession();
+                // App resuming - try to resend pending logs
+                if (IsLoggedIn)
+                {
+                    _ = RetryPendingLogs();
+
+                    if (!HasActiveSession)
+                    {
+                        _ = StartSession();
+                    }
+                }
             }
         }
         #endregion
@@ -412,7 +444,15 @@ namespace VRLogDashboard
 
         private async Task<bool> QueueRequest(string endpoint, string jsonBody)
         {
-            pendingRequests.Enqueue(new LogRequest { endpoint = endpoint, body = jsonBody });
+            var logRequest = new LogRequest
+            {
+                endpoint = endpoint,
+                body = jsonBody,
+                retryCount = 0,
+                timestamp = DateTime.UtcNow.ToString("o")
+            };
+
+            pendingRequests.Enqueue(logRequest);
 
             if (!isProcessingQueue)
             {
@@ -425,6 +465,7 @@ namespace VRLogDashboard
         private async Task ProcessQueue()
         {
             isProcessingQueue = true;
+            var failedRequests = new List<LogRequest>();
 
             while (pendingRequests.Count > 0)
             {
@@ -432,19 +473,52 @@ namespace VRLogDashboard
 
                 try
                 {
-                    await PostRequest<BaseResponse>(request.endpoint, request.body, true);
+                    var response = await PostRequest<BaseResponse>(request.endpoint, request.body, true);
+                    if (response != null && response.success)
+                    {
+                        Log($"Log sent successfully: {request.endpoint}");
+                    }
+                    else
+                    {
+                        throw new Exception("Server returned failure response");
+                    }
                 }
                 catch (Exception ex)
                 {
                     LogError($"Failed to process request: {ex.Message}");
-                    // Re-queue on failure (with max retries in production)
+
+                    request.retryCount++;
+                    if (request.retryCount < MAX_RETRY_COUNT)
+                    {
+                        failedRequests.Add(request);
+                        Log($"Request queued for retry ({request.retryCount}/{MAX_RETRY_COUNT})");
+                    }
+                    else
+                    {
+                        // Max retries exceeded - save to local storage
+                        SaveFailedLogToLocal(request);
+                        LogError($"Request failed after {MAX_RETRY_COUNT} retries, saved locally");
+                    }
                 }
 
                 // Small delay between requests
                 await Task.Delay(50);
             }
 
+            // Re-queue failed requests for retry
+            foreach (var failed in failedRequests)
+            {
+                pendingRequests.Enqueue(failed);
+            }
+
             isProcessingQueue = false;
+
+            // If there are still pending requests, retry after delay
+            if (pendingRequests.Count > 0 && isNetworkAvailable)
+            {
+                await Task.Delay(2000); // Wait 2 seconds before retry
+                await ProcessQueue();
+            }
         }
 
         private async Task<T> PostRequest<T>(string endpoint, string jsonBody, bool authenticated) where T : class
@@ -669,10 +743,175 @@ namespace VRLogDashboard
             public string to_content_name;
         }
 
+        [Serializable]
         private class LogRequest
         {
             public string endpoint;
             public string body;
+            public int retryCount;
+            public string timestamp;
+        }
+
+        [Serializable]
+        private class LogRequestList
+        {
+            public List<LogRequest> requests = new List<LogRequest>();
+        }
+
+        #endregion
+
+        #region Local Storage Methods
+
+        private void SaveFailedLogToLocal(LogRequest request)
+        {
+            try
+            {
+                var pendingLogs = LoadLocalLogFile();
+                pendingLogs.requests.Add(request);
+                SaveLocalLogFile(pendingLogs);
+                Log($"Saved failed log to local storage. Total pending: {pendingLogs.requests.Count}");
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to save log locally: {ex.Message}");
+            }
+        }
+
+        private void SavePendingLogsToLocal()
+        {
+            try
+            {
+                if (pendingRequests.Count == 0) return;
+
+                var pendingLogs = LoadLocalLogFile();
+                while (pendingRequests.Count > 0)
+                {
+                    pendingLogs.requests.Add(pendingRequests.Dequeue());
+                }
+                SaveLocalLogFile(pendingLogs);
+                Log($"Saved {pendingLogs.requests.Count} pending logs to local storage");
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to save pending logs: {ex.Message}");
+            }
+        }
+
+        private void LoadPendingLogsFromLocal()
+        {
+            try
+            {
+                var pendingLogs = LoadLocalLogFile();
+                if (pendingLogs.requests.Count > 0)
+                {
+                    Log($"Loaded {pendingLogs.requests.Count} pending logs from local storage");
+                    foreach (var request in pendingLogs.requests)
+                    {
+                        request.retryCount = 0; // Reset retry count
+                        pendingRequests.Enqueue(request);
+                    }
+                    // Clear local file after loading
+                    ClearLocalLogFile();
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to load pending logs: {ex.Message}");
+            }
+        }
+
+        private LogRequestList LoadLocalLogFile()
+        {
+            if (File.Exists(localLogFilePath))
+            {
+                var json = File.ReadAllText(localLogFilePath);
+                return JsonUtility.FromJson<LogRequestList>(json) ?? new LogRequestList();
+            }
+            return new LogRequestList();
+        }
+
+        private void SaveLocalLogFile(LogRequestList logs)
+        {
+            var json = JsonUtility.ToJson(logs, true);
+            File.WriteAllText(localLogFilePath, json);
+        }
+
+        private void ClearLocalLogFile()
+        {
+            if (File.Exists(localLogFilePath))
+            {
+                File.Delete(localLogFilePath);
+            }
+        }
+
+        #endregion
+
+        #region Network Monitoring
+
+        private void StartNetworkMonitoring()
+        {
+            if (networkCheckCoroutine != null)
+            {
+                StopCoroutine(networkCheckCoroutine);
+            }
+            networkCheckCoroutine = StartCoroutine(NetworkMonitorCoroutine());
+        }
+
+        private IEnumerator NetworkMonitorCoroutine()
+        {
+            while (true)
+            {
+                yield return new WaitForSeconds(NETWORK_CHECK_INTERVAL);
+
+                var previousState = isNetworkAvailable;
+                isNetworkAvailable = Application.internetReachability != NetworkReachability.NotReachable;
+
+                // Network recovered
+                if (!previousState && isNetworkAvailable)
+                {
+                    Log("Network recovered, attempting to resend pending logs");
+                    _ = RetryPendingLogs();
+                }
+            }
+        }
+
+        private async Task RetryPendingLogs()
+        {
+            if (!IsLoggedIn || !isNetworkAvailable) return;
+
+            // Load any locally saved logs
+            LoadPendingLogsFromLocal();
+
+            // Process queue if there are pending requests
+            if (pendingRequests.Count > 0 && !isProcessingQueue)
+            {
+                Log($"Retrying {pendingRequests.Count} pending logs");
+                await ProcessQueue();
+            }
+        }
+
+        /// <summary>
+        /// 로컬에 저장된 대기 중인 로그 개수를 반환합니다.
+        /// </summary>
+        public int GetPendingLogCount()
+        {
+            var localLogs = LoadLocalLogFile();
+            return pendingRequests.Count + localLogs.requests.Count;
+        }
+
+        /// <summary>
+        /// 수동으로 대기 중인 로그를 재전송합니다.
+        /// </summary>
+        public async Task<bool> FlushPendingLogs()
+        {
+            if (!IsLoggedIn)
+            {
+                LogError("Cannot flush logs: Not logged in");
+                return false;
+            }
+
+            await RetryPendingLogs();
+            return pendingRequests.Count == 0;
         }
 
         #endregion
