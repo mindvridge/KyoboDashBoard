@@ -52,8 +52,6 @@ namespace VRLogDashboard
         [Header("Daily Log Archive")]
         [Tooltip("모든 로그를 날짜별로 로컬에 저장합니다")]
         [SerializeField] private bool enableDailyLogArchive = true;
-        [Tooltip("로그 파일 보관 일수 (0 = 무제한)")]
-        [SerializeField] private int logRetentionDays = 30;
         #endregion
 
         #region Private Fields
@@ -127,12 +125,6 @@ namespace VRLogDashboard
 
             // Start network monitoring
             StartNetworkMonitoring();
-
-            // Clean up old daily logs
-            if (enableDailyLogArchive && logRetentionDays > 0)
-            {
-                CleanupOldDailyLogs();
-            }
 
             if (autoLogin)
             {
@@ -858,41 +850,6 @@ namespace VRLogDashboard
         {
             var json = JsonUtility.ToJson(logs, true);
             File.WriteAllText(filePath, json);
-        }
-
-        private void CleanupOldDailyLogs()
-        {
-            try
-            {
-                if (!Directory.Exists(logsDirectoryPath)) return;
-
-                var files = Directory.GetFiles(logsDirectoryPath, "*.json");
-                var koreanNow = DateTime.UtcNow + KoreanTimeOffset;
-                var cutoffDate = koreanNow.AddDays(-logRetentionDays);
-                var deletedCount = 0;
-
-                foreach (var file in files)
-                {
-                    var fileName = Path.GetFileNameWithoutExtension(file);
-                    if (DateTime.TryParse(fileName, out var fileDate))
-                    {
-                        if (fileDate < cutoffDate)
-                        {
-                            File.Delete(file);
-                            deletedCount++;
-                        }
-                    }
-                }
-
-                if (deletedCount > 0)
-                {
-                    Log($"Cleaned up {deletedCount} old daily log files");
-                }
-            }
-            catch (Exception ex)
-            {
-                LogError($"Failed to cleanup old logs: {ex.Message}");
-            }
         }
 
         #endregion
