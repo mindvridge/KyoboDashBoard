@@ -187,17 +187,7 @@ Task<bool> LogWatchEndAsync(string contentId, string contentName, float duration
 Task<bool> LogContentSwitch(string fromContentId, string toContentId, string toContentName)
 ```
 
-### 5.5 로비 이벤트 메서드
-
-```csharp
-// 로비 입장
-Task<bool> LogLobbyEnter()
-
-// 로비 퇴장
-Task<bool> LogLobbyExit()
-```
-
-### 5.6 로컬 저장 메서드
+### 5.5 로컬 저장 메서드
 
 ```csharp
 // 대기 중인 로그 개수
@@ -207,7 +197,7 @@ int GetPendingLogCount()
 Task<bool> FlushPendingLogs()
 ```
 
-### 5.7 비디오 헬퍼 메서드
+### 5.6 비디오 헬퍼 메서드
 
 ```csharp
 // 현재 비디오 정보 가져오기
@@ -406,35 +396,6 @@ public class LogStatusUI : MonoBehaviour
 }
 ```
 
-### 8.3 로비 씬 컨트롤러
-
-```csharp
-using UnityEngine;
-using VRLogDashboard;
-
-public class LobbyController : MonoBehaviour
-{
-    private float lobbyEnterTime;
-
-    void OnEnable()
-    {
-        lobbyEnterTime = Time.time;
-        VRLogger.Instance.LogLobbyEnter();
-    }
-
-    void OnDisable()
-    {
-        VRLogger.Instance.LogLobbyExit();
-    }
-
-    public void OnExitLobby()
-    {
-        float lobbyTime = Time.time - lobbyEnterTime;
-        // 로비에서 보낸 시간이 세션 종료 시 기록됨
-    }
-}
-```
-
 ---
 
 ## 9. 자동 동작 흐름
@@ -553,4 +514,3 @@ Inspector에서 `Enable Debug Logs`를 체크하면 상세 로그 확인 가능:
 | `/api/logs/content-select` | POST | 콘텐츠 선택 |
 | `/api/logs/content-watch` | POST | 시청 이벤트 |
 | `/api/logs/content-switch` | POST | 콘텐츠 전환 |
-| `/api/logs/lobby` | POST | 로비 이벤트 |

@@ -365,22 +365,6 @@ namespace VRLogDashboard
         }
 
         /// <summary>
-        /// 로비 입장 이벤트를 로그합니다.
-        /// </summary>
-        public async Task<bool> LogLobbyEnter()
-        {
-            return await LogLobbyEvent("LOBBY_ENTER");
-        }
-
-        /// <summary>
-        /// 로비 퇴장 이벤트를 로그합니다.
-        /// </summary>
-        public async Task<bool> LogLobbyExit()
-        {
-            return await LogLobbyEvent("LOBBY_EXIT");
-        }
-
-        /// <summary>
         /// 콘텐츠 전환 이벤트를 로그합니다.
         /// </summary>
         public async Task<bool> LogContentSwitch(string fromContentId, string toContentId, string toContentName)
@@ -448,23 +432,6 @@ namespace VRLogDashboard
             };
 
             return await QueueRequest("/api/logs/content-watch", JsonUtility.ToJson(request));
-        }
-
-        private async Task<bool> LogLobbyEvent(string actionType)
-        {
-            if (!HasActiveSession)
-            {
-                LogError("Cannot log: No active session");
-                return false;
-            }
-
-            var request = new LobbyEventRequest
-            {
-                session_id = currentSessionId,
-                action_type = actionType
-            };
-
-            return await QueueRequest("/api/logs/lobby", JsonUtility.ToJson(request));
         }
 
         private async Task<bool> QueueRequest(string endpoint, string jsonBody)
@@ -851,13 +818,6 @@ namespace VRLogDashboard
             public string content_name;
             public string action_type;
             public int duration;
-        }
-
-        [Serializable]
-        private class LobbyEventRequest
-        {
-            public string session_id;
-            public string action_type;
         }
 
         [Serializable]
