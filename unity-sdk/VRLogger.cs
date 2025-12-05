@@ -192,7 +192,6 @@ namespace VRLogDashboard
                 if (response != null && response.success)
                 {
                     authToken = response.token;
-                    isInitialized = true;
 
                     Log($"Device registered: {response.device.device_id}, New: {response.is_new_device}");
 
