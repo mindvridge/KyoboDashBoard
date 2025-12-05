@@ -180,7 +180,7 @@ export class StatsController {
    */
   static async exportLogs(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { start_date, end_date, device_id, format } = req.query;
+      const { start_date, end_date, device_id, action_type, format } = req.query;
 
       // 한국 시간(KST) 기준 날짜 범위
       const defaultRange = getKoreaDateRange(30);
@@ -194,13 +194,15 @@ export class StatsController {
 
       const data = await StatsService.exportContentLogData(startDate, endDate, {
         deviceId: device_id as string,
+        actionType: action_type as string,
       });
 
       if (format === 'csv') {
         const csv = convertToCSV(data);
-        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', 'attachment; filename=content_logs.csv');
-        res.send(csv);
+        // Add BOM for Excel UTF-8 compatibility
+        res.send('\uFEFF' + csv);
       } else {
         res.json({
           success: true,

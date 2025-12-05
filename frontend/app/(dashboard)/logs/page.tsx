@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/Badge';
 import { logsApi, devicesApi } from '@/utils/api';
 import { formatDate, getActionTypeLabel } from '@/utils/format';
 import { format, subDays } from 'date-fns';
-import { Filter, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { Filter, ChevronLeft, ChevronRight, Trash2, Download } from 'lucide-react';
 
 const actionColors: Record<string, 'default' | 'success' | 'warning' | 'info'> = {
   SELECT: 'info',
@@ -177,6 +177,68 @@ export default function LogsPage() {
     }
   };
 
+  const getApiBaseUrl = () => {
+    return process.env.NEXT_PUBLIC_API_URL || 'https://kyobodashboard-production.up.railway.app/api';
+  };
+
+  const handleDownload = (type: 'all' | 'current' | 'watch' | 'monthly' | 'yearly') => {
+    const baseUrl = getApiBaseUrl();
+    let url = `${baseUrl}/stats/export/logs?format=csv`;
+
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+
+    switch (type) {
+      case 'current':
+        // Download with current filter
+        if (filters.startDate) {
+          url += `&start_date=${new Date(filters.startDate).toISOString()}`;
+        }
+        if (filters.endDate) {
+          url += `&end_date=${new Date(filters.endDate + 'T23:59:59').toISOString()}`;
+        }
+        if (filters.deviceId) {
+          url += `&device_id=${filters.deviceId}`;
+        }
+        if (filters.actionType) {
+          url += `&action_type=${filters.actionType}`;
+        }
+        break;
+      case 'watch':
+        // Download only watch logs (WATCH_END with duration)
+        url += `&action_type=WATCH_END`;
+        if (filters.startDate) {
+          url += `&start_date=${new Date(filters.startDate).toISOString()}`;
+        }
+        if (filters.endDate) {
+          url += `&end_date=${new Date(filters.endDate + 'T23:59:59').toISOString()}`;
+        }
+        break;
+      case 'monthly':
+        // Download current month
+        const monthStart = new Date(year, month - 1, 1);
+        const monthEnd = new Date(year, month, 0, 23, 59, 59);
+        url += `&start_date=${monthStart.toISOString()}&end_date=${monthEnd.toISOString()}`;
+        break;
+      case 'yearly':
+        // Download current year
+        const yearStart = new Date(year, 0, 1);
+        const yearEnd = new Date(year, 11, 31, 23, 59, 59);
+        url += `&start_date=${yearStart.toISOString()}&end_date=${yearEnd.toISOString()}`;
+        break;
+      case 'all':
+      default:
+        // Download all (last 365 days)
+        const allStart = new Date();
+        allStart.setFullYear(allStart.getFullYear() - 1);
+        url += `&start_date=${allStart.toISOString()}&end_date=${now.toISOString()}`;
+        break;
+    }
+
+    window.open(url, '_blank');
+  };
+
   const formatWatchTime = (duration: number | null | undefined, actionType: string) => {
     if (duration == null || duration <= 0) {
       return actionType === 'WATCH_END' ? '0초' : '-';
@@ -258,31 +320,73 @@ export default function LogsPage() {
           {/* Logs Table */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <CardTitle>로그 목록 ({logs.length}건)</CardTitle>
-                <div className="flex items-center space-x-2">
-                  {selectedIds.size > 0 && (
+                <div className="flex items-center flex-wrap gap-2">
+                  {/* Download Buttons */}
+                  <div className="flex items-center gap-1">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={handleDeleteSelected}
-                      disabled={isDeleting}
+                      onClick={() => handleDownload('current')}
+                      className="text-green-600 border-green-300 hover:bg-green-50"
+                    >
+                      <Download className="w-4 h-4 mr-1" />
+                      현재 필터
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDownload('watch')}
+                      className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                    >
+                      <Download className="w-4 h-4 mr-1" />
+                      시청 로그
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDownload('monthly')}
+                      className="text-purple-600 border-purple-300 hover:bg-purple-50"
+                    >
+                      <Download className="w-4 h-4 mr-1" />
+                      월별
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDownload('yearly')}
+                      className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                    >
+                      <Download className="w-4 h-4 mr-1" />
+                      년도별
+                    </Button>
+                  </div>
+                  {/* Delete Buttons */}
+                  <div className="flex items-center gap-1">
+                    {selectedIds.size > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleDeleteSelected}
+                        disabled={isDeleting}
+                        className="text-red-600 border-red-300 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        선택 삭제 ({selectedIds.size})
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDeleteAll}
+                      disabled={isDeleting || logs.length === 0}
                       className="text-red-600 border-red-300 hover:bg-red-50"
                     >
                       <Trash2 className="w-4 h-4 mr-1" />
-                      선택 삭제 ({selectedIds.size})
+                      전체 삭제
                     </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleDeleteAll}
-                    disabled={isDeleting || logs.length === 0}
-                    className="text-red-600 border-red-300 hover:bg-red-50"
-                  >
-                    <Trash2 className="w-4 h-4 mr-1" />
-                    전체 삭제
-                  </Button>
+                  </div>
                 </div>
               </div>
             </CardHeader>

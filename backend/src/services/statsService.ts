@@ -96,8 +96,12 @@ export class StatsService {
 
   static async exportContentLogData(startDate: Date, endDate: Date, options?: {
     deviceId?: string;
+    actionType?: string;
   }) {
-    const logs = await ContentLogModel.getLogsByDateRange(startDate, endDate, options);
+    const logs = await ContentLogModel.getLogsByDateRange(startDate, endDate, {
+      deviceId: options?.deviceId,
+      actionType: options?.actionType as any,
+    });
 
     return logs.map((l: any) => ({
       log_id: l.id,

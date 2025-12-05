@@ -13,7 +13,7 @@ import { ViewingCalendar } from '@/components/charts/ViewingCalendar';
 import { useDashboard } from '@/hooks/useDashboard';
 import { useSocket } from '@/hooks/useSocket';
 import { formatDuration, formatNumber } from '@/utils/format';
-import { Users, Clock, PlayCircle, MonitorPlay } from 'lucide-react';
+import { Users, Clock, PlayCircle } from 'lucide-react';
 
 export default function DashboardPage() {
   const { stats, activeSessions, alerts, isLoading, error, refresh, handleRealtimeEvent } = useDashboard();
@@ -41,20 +41,13 @@ export default function DashboardPage() {
           )}
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
             <StatCard
               title="활성 세션"
               value={formatNumber(stats?.active_sessions || 0)}
               subtitle="현재 진행 중"
               icon={Users}
               color="green"
-            />
-            <StatCard
-              title="오늘 총 세션"
-              value={formatNumber(stats?.total_sessions_today || 0)}
-              subtitle="00:00부터 현재까지"
-              icon={MonitorPlay}
-              color="blue"
             />
             <StatCard
               title="총 시청 시간"
