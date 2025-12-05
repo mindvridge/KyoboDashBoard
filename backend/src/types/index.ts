@@ -120,7 +120,6 @@ export interface DashboardStats {
   total_sessions_today: number;
   total_watch_time_today: number;
   popular_contents: PopularContent[];
-  space_stats: SpaceStats[];
   hourly_sessions: HourlySession[];
 }
 
@@ -129,14 +128,6 @@ export interface PopularContent {
   content_name: string;
   view_count: number;
   total_watch_time: number;
-}
-
-export interface SpaceStats {
-  space_id: string;
-  space_name: string;
-  active_devices: number;
-  total_sessions: number;
-  avg_session_duration: number;
 }
 
 export interface HourlySession {

@@ -28,7 +28,7 @@ export class StatsController {
    */
   static async getDetailed(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { start_date, end_date, space_id } = req.query;
+      const { start_date, end_date } = req.query;
 
       // 한국 시간(KST) 기준 날짜 범위
       const defaultRange = getKoreaDateRange(30);
@@ -40,7 +40,7 @@ export class StatsController {
         ? new Date(end_date as string)
         : defaultRange.end;
 
-      const stats = await StatsService.getDetailedStats(startDate, endDate, space_id as string);
+      const stats = await StatsService.getDetailedStats(startDate, endDate);
 
       res.json({
         success: true,
@@ -140,7 +140,7 @@ export class StatsController {
    */
   static async exportSessions(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { start_date, end_date, space_id, device_id, format } = req.query;
+      const { start_date, end_date, device_id, format } = req.query;
 
       // 한국 시간(KST) 기준 날짜 범위
       const defaultRange = getKoreaDateRange(30);
@@ -153,7 +153,6 @@ export class StatsController {
         : defaultRange.end;
 
       const data = await StatsService.exportSessionData(startDate, endDate, {
-        spaceId: space_id as string,
         deviceId: device_id as string,
       });
 
@@ -180,7 +179,7 @@ export class StatsController {
    */
   static async exportLogs(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { start_date, end_date, space_id, device_id, format } = req.query;
+      const { start_date, end_date, device_id, format } = req.query;
 
       // 한국 시간(KST) 기준 날짜 범위
       const defaultRange = getKoreaDateRange(30);
@@ -193,7 +192,6 @@ export class StatsController {
         : defaultRange.end;
 
       const data = await StatsService.exportContentLogData(startDate, endDate, {
-        spaceId: space_id as string,
         deviceId: device_id as string,
       });
 

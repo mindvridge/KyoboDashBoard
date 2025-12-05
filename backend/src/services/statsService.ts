@@ -1,10 +1,8 @@
 import { SessionModel } from '../models/session';
 import { ContentLogModel } from '../models/contentLog';
 import { DeviceModel } from '../models/device';
-import { SpaceModel } from '../models/space';
 import { DashboardStats } from '../types';
 import { cacheGet, cacheSet } from '../config/redis';
-import { logger } from '../utils/logger';
 import { getKoreaTodayRange } from '../utils/timezone';
 
 export class StatsService {
@@ -24,14 +22,12 @@ export class StatsService {
       todaySessionCount,
       totalWatchTime,
       popularContents,
-      spaces,
       hourlyDistribution,
     ] = await Promise.all([
       SessionModel.getActiveSessionCount(),
       SessionModel.getTodaySessionCount(),
       ContentLogModel.getTotalWatchTimeToday(),
       ContentLogModel.getPopularContents(today, tomorrow, 10),
-      SpaceModel.getWithStats(),
       SessionModel.getHourlySessionDistribution(today),
     ]);
 
@@ -44,13 +40,6 @@ export class StatsService {
         content_name: c.content_name,
         view_count: parseInt(c.view_count, 10),
         total_watch_time: parseInt(c.total_watch_time || '0', 10),
-      })),
-      space_stats: spaces.map((s: any) => ({
-        space_id: s.id,
-        space_name: s.name,
-        active_devices: parseInt(s.device_count || '0', 10),
-        total_sessions: parseInt(s.active_sessions || '0', 10),
-        avg_session_duration: 0, // Would need separate query
       })),
       hourly_sessions: Array.from({ length: 24 }, (_, hour) => {
         const found = (hourlyDistribution as Array<{ hour: string; session_count: string }>).find(h => parseInt(h.hour, 10) === hour);
@@ -68,7 +57,7 @@ export class StatsService {
   /**
    * Get detailed statistics for a date range
    */
-  static async getDetailedStats(startDate: Date, endDate: Date, spaceId?: string) {
+  static async getDetailedStats(startDate: Date, endDate: Date) {
     const [sessionStats, dailyContentStats, popularContents] = await Promise.all([
       SessionModel.getSessionStats(startDate, endDate),
       ContentLogModel.getDailyStats(startDate, endDate),
@@ -83,37 +72,15 @@ export class StatsService {
   }
 
   /**
-   * Get space-specific statistics
-   */
-  static async getSpaceStats(spaceId: string, startDate: Date, endDate: Date) {
-    const [sessions, devices] = await Promise.all([
-      SessionModel.getSessionsByDateRange(startDate, endDate, spaceId),
-      DeviceModel.findAll(),  // space_id 필터 제거됨
-    ]);
-
-    const totalDuration = sessions.reduce((sum, s) => sum + (s.duration || 0), 0);
-    const avgDuration = sessions.length > 0 ? totalDuration / sessions.length : 0;
-
-    return {
-      total_sessions: sessions.length,
-      total_devices: devices.length,
-      active_devices: devices.filter(d => d.is_active).length,
-      total_duration: totalDuration,
-      avg_session_duration: Math.round(avgDuration),
-    };
-  }
-
-  /**
    * Export data for CSV download
    */
   static async exportSessionData(startDate: Date, endDate: Date, options?: {
-    spaceId?: string;
     deviceId?: string;
   }) {
     const sessions = await SessionModel.getSessionsByDateRange(
       startDate,
       endDate,
-      options?.spaceId,
+      undefined,
       options?.deviceId
     );
 
@@ -128,7 +95,6 @@ export class StatsService {
   }
 
   static async exportContentLogData(startDate: Date, endDate: Date, options?: {
-    spaceId?: string;
     deviceId?: string;
   }) {
     const logs = await ContentLogModel.getLogsByDateRange(startDate, endDate, options);

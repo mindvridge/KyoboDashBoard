@@ -3,7 +3,6 @@ import deviceRoutes from './devices';
 import sessionRoutes from './sessions';
 import logRoutes from './logs';
 import statsRoutes from './stats';
-import spaceRoutes from './spaces';
 import videoRoutes from './videos';
 import userAuthRoutes from './userAuth';
 import adminRoutes from './admin';
@@ -27,7 +26,6 @@ router.use('/devices', deviceRoutes);
 router.use('/sessions', sessionRoutes);
 router.use('/logs', logRoutes);
 router.use('/stats', statsRoutes);
-router.use('/spaces', spaceRoutes);
 router.use('/videos', videoRoutes);
 
 export default router;

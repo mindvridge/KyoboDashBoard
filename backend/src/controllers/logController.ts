@@ -145,7 +145,6 @@ export class LogController {
       const {
         start_date,
         end_date,
-        space_id,
         device_id,
         content_id,
         action_type,
@@ -164,7 +163,6 @@ export class LogController {
         : defaultRange.end;
 
       const logs = await ContentLogService.getLogsByDateRange(startDate, endDate, {
-        spaceId: space_id as string,
         deviceId: device_id as string,
         contentId: content_id as string,
         actionType: action_type as any,

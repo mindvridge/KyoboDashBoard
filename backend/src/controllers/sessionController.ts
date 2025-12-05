@@ -112,7 +112,7 @@ export class SessionController {
    */
   static async getByDateRange(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { start_date, end_date, space_id, device_id } = req.query;
+      const { start_date, end_date, device_id } = req.query;
 
       // 한국 시간(KST) 기준 날짜 범위
       const defaultRange = getKoreaDateRange(7);
@@ -127,7 +127,7 @@ export class SessionController {
       const sessions = await SessionService.getSessionsByDateRange(
         startDate,
         endDate,
-        space_id as string,
+        undefined,
         device_id as string
       );
 
