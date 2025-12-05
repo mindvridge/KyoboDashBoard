@@ -146,7 +146,7 @@ export interface JWTPayload {
 export interface RealtimeEvent {
   type: RealtimeEventType;
   data: unknown;
-  timestamp: Date;
+  timestamp: string;
 }
 
 export type RealtimeEventType =
