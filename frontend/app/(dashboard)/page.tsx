@@ -28,7 +28,6 @@ export default function DashboardPage() {
       <div className="flex-1">
         <Header
           title="실시간 대시보드"
-          alertCount={alerts.filter(a => !a.resolved).length}
           onRefresh={refresh}
           isLoading={isLoading}
         />

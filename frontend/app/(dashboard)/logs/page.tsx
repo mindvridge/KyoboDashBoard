@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
-import { logsApi, spacesApi, devicesApi } from '@/utils/api';
+import { logsApi, devicesApi } from '@/utils/api';
 import { formatDate, getActionTypeLabel } from '@/utils/format';
 import { format, subDays } from 'date-fns';
 import { Filter, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -23,7 +23,6 @@ const actionColors: Record<string, 'default' | 'success' | 'warning' | 'info'> =
 
 export default function LogsPage() {
   const [logs, setLogs] = useState<any[]>([]);
-  const [spaces, setSpaces] = useState<any[]>([]);
   const [devices, setDevices] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -31,7 +30,6 @@ export default function LogsPage() {
   const [filters, setFilters] = useState({
     startDate: '',
     endDate: '',
-    spaceId: '',
     deviceId: '',
     actionType: '',
     search: '',
@@ -56,11 +54,7 @@ export default function LogsPage() {
   useEffect(() => {
     const fetchOptions = async () => {
       try {
-        const [spacesRes, devicesRes] = await Promise.all([
-          spacesApi.getAll(),
-          devicesApi.getAll(),
-        ]);
-        if (spacesRes.success) setSpaces(spacesRes.data);
+        const devicesRes = await devicesApi.getAll();
         if (devicesRes.success) setDevices(devicesRes.data);
       } catch {
         // Error handled silently
@@ -78,7 +72,6 @@ export default function LogsPage() {
         const response = await logsApi.getByDateRange({
           startDate: new Date(filters.startDate).toISOString(),
           endDate: new Date(filters.endDate + 'T23:59:59').toISOString(),
-          spaceId: filters.spaceId || undefined,
           deviceId: filters.deviceId || undefined,
         });
         if (response.success) {
@@ -133,7 +126,7 @@ export default function LogsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 <Input
                   type="date"
                   label="시작일"
@@ -146,16 +139,6 @@ export default function LogsPage() {
                   value={filters.endDate}
                   onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
                 />
-                <Select
-                  label="공간"
-                  value={filters.spaceId}
-                  onChange={(e) => setFilters({ ...filters, spaceId: e.target.value })}
-                >
-                  <option value="">전체</option>
-                  {spaces.map((space) => (
-                    <option key={space.id} value={space.id}>{space.name}</option>
-                  ))}
-                </Select>
                 <Select
                   label="기기"
                   value={filters.deviceId}
@@ -209,7 +192,6 @@ export default function LogsPage() {
                       <thead>
                         <tr className="border-b border-gray-200">
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">시간</th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">공간</th>
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">기기</th>
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">콘텐츠</th>
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">이벤트</th>
@@ -223,9 +205,6 @@ export default function LogsPage() {
                               {formatDate(log.timestamp, 'MM-dd HH:mm:ss')}
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-600">
-                              {log.space_name || '-'}
-                            </td>
-                            <td className="py-3 px-4 text-sm text-gray-600">
                               {log.device_info || '-'}
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-900 max-w-xs truncate">
@@ -237,7 +216,9 @@ export default function LogsPage() {
                               </Badge>
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-600 text-right">
-                              {log.duration ? `${log.duration}초` : '-'}
+                              {log.duration != null && log.duration > 0
+                                ? `${Math.floor(log.duration / 60)}분 ${log.duration % 60}초`
+                                : log.action_type === 'WATCH_END' ? '0초' : '-'}
                             </td>
                           </tr>
                         ))}
