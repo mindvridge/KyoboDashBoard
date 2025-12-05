@@ -283,4 +283,47 @@ export class ContentLogModel {
 
     return query(sql, params);
   }
+
+  /**
+   * 로그 삭제
+   */
+  static async delete(id: string): Promise<boolean> {
+    const sql = 'DELETE FROM content_logs WHERE id = $1 RETURNING id';
+    const rows = await query(sql, [id]);
+    return rows.length > 0;
+  }
+
+  /**
+   * 여러 로그 일괄 삭제
+   */
+  static async deleteMany(ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const sql = 'DELETE FROM content_logs WHERE id = ANY($1) RETURNING id';
+    const rows = await query(sql, [ids]);
+    return rows.length;
+  }
+
+  /**
+   * 기간별 로그 삭제
+   */
+  static async deleteByDateRange(startDate: Date, endDate: Date): Promise<number> {
+    const sql = 'DELETE FROM content_logs WHERE timestamp >= $1 AND timestamp <= $2 RETURNING id';
+    const rows = await query(sql, [startDate, endDate]);
+    return rows.length;
+  }
+
+  /**
+   * 기기별 로그 삭제
+   */
+  static async deleteByDeviceId(deviceId: string): Promise<number> {
+    const sql = `
+      DELETE FROM content_logs
+      WHERE session_id IN (
+        SELECT id FROM sessions WHERE device_id = $1
+      )
+      RETURNING id
+    `;
+    const rows = await query(sql, [deviceId]);
+    return rows.length;
+  }
 }

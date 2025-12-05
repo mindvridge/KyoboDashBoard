@@ -147,4 +147,10 @@ export class SessionModel {
     const rows = await query(sql, [sessionId]);
     return rows[0] || null;
   }
+
+  static async deleteByDeviceId(deviceId: string): Promise<number> {
+    const sql = 'DELETE FROM sessions WHERE device_id = $1 RETURNING id';
+    const rows = await query(sql, [deviceId]);
+    return rows.length;
+  }
 }

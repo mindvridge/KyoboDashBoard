@@ -119,16 +119,18 @@ export class DeviceController {
 
   /**
    * DELETE /api/devices/:id
-   * Delete a device
+   * Delete a device and related logs/sessions
    */
   static async delete(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      await DeviceService.deleteDevice(id);
+      const result = await DeviceService.deleteDevice(id);
 
       res.json({
         success: true,
-        message: 'Device deleted successfully',
+        message: '기기가 삭제되었습니다',
+        logs_deleted: result.logsDeleted,
+        sessions_deleted: result.sessionsDeleted,
       });
     } catch (error) {
       next(error);

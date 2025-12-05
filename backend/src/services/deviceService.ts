@@ -1,5 +1,6 @@
 import { DeviceModel } from '../models/device';
 import { SessionModel } from '../models/session';
+import { ContentLogModel } from '../models/contentLog';
 import { generateToken } from '../middleware/auth';
 import { Device, DeviceRegistrationRequest, DeviceRegistrationResponse } from '../types';
 import { logger } from '../utils/logger';
@@ -92,8 +93,19 @@ export class DeviceService {
     }
   }
 
-  static async deleteDevice(id: string): Promise<void> {
+  static async deleteDevice(id: string): Promise<{ logsDeleted: number; sessionsDeleted: number }> {
+    // 먼저 관련 로그 삭제
+    const logsDeleted = await ContentLogModel.deleteByDeviceId(id);
+    logger.info('Deleted logs for device', { device_id: id, logs_deleted: logsDeleted });
+
+    // 세션 삭제 (CASCADE로 처리될 수도 있음)
+    const sessionsDeleted = await SessionModel.deleteByDeviceId(id);
+    logger.info('Deleted sessions for device', { device_id: id, sessions_deleted: sessionsDeleted });
+
+    // 디바이스 삭제
     await DeviceModel.delete(id);
     await cacheDelete(`device:${id}`);
+
+    return { logsDeleted, sessionsDeleted };
   }
 }

@@ -316,4 +316,86 @@ router.get('/content/:contentId/stats', LogController.getContentStats);
  */
 router.get('/', LogController.getByDateRange);
 
+/**
+ * @swagger
+ * /logs/delete-bulk:
+ *   post:
+ *     summary: 로그 일괄 삭제
+ *     description: 여러 로그를 일괄 삭제합니다.
+ *     tags: [Logs]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: uuid
+ *     responses:
+ *       200:
+ *         description: 삭제 성공
+ *       400:
+ *         description: 입력값 오류
+ */
+router.post('/delete-bulk', LogController.deleteBulk);
+
+/**
+ * @swagger
+ * /logs/by-date-range:
+ *   delete:
+ *     summary: 기간별 로그 삭제
+ *     description: 지정된 기간의 모든 로그를 삭제합니다.
+ *     tags: [Logs]
+ *     parameters:
+ *       - in: query
+ *         name: start_date
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: 시작 날짜
+ *       - in: query
+ *         name: end_date
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: 종료 날짜
+ *     responses:
+ *       200:
+ *         description: 삭제 성공
+ *       400:
+ *         description: 입력값 오류
+ */
+router.delete('/by-date-range', LogController.deleteByDateRange);
+
+/**
+ * @swagger
+ * /logs/{id}:
+ *   delete:
+ *     summary: 로그 삭제
+ *     description: 특정 로그를 삭제합니다.
+ *     tags: [Logs]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: 로그 ID
+ *     responses:
+ *       200:
+ *         description: 삭제 성공
+ *       404:
+ *         description: 로그를 찾을 수 없음
+ */
+router.delete('/:id', LogController.delete);
+
 export default router;

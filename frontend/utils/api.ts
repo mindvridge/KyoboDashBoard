@@ -113,6 +113,23 @@ export const logsApi = {
     if (params.contentId) query.set('content_id', params.contentId);
     return fetchApi<{ success: boolean; data: any[] }>(`/logs?${query}`);
   },
+  delete: (id: string) =>
+    fetchApi<{ success: boolean; message: string }>(`/logs/${id}`, {
+      method: 'DELETE',
+    }),
+  deleteBulk: (ids: string[]) =>
+    fetchApi<{ success: boolean; message: string; deleted_count: number }>('/logs/delete-bulk', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
+  deleteByDateRange: (params: { startDate: string; endDate: string }) => {
+    const query = new URLSearchParams();
+    query.set('start_date', params.startDate);
+    query.set('end_date', params.endDate);
+    return fetchApi<{ success: boolean; message: string; deleted_count: number }>(`/logs/by-date-range?${query}`, {
+      method: 'DELETE',
+    });
+  },
 };
 
 // Devices API
@@ -120,6 +137,10 @@ export const devicesApi = {
   getAll: () => fetchApi<{ success: boolean; data: any[] }>('/devices'),
   getActive: () => fetchApi<{ success: boolean; data: any[] }>('/devices/active'),
   getById: (id: string) => fetchApi<{ success: boolean; data: any }>(`/devices/${id}`),
+  delete: (id: string) =>
+    fetchApi<{ success: boolean; message: string; logs_deleted: number; sessions_deleted: number }>(`/devices/${id}`, {
+      method: 'DELETE',
+    }),
 };
 
 // Videos API

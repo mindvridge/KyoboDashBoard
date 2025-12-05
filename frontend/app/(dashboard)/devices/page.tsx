@@ -4,12 +4,13 @@ import { useState, useEffect, useMemo } from 'react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { devicesApi } from '@/utils/api';
 import { formatDate } from '@/utils/format';
-import { Monitor, Wifi, WifiOff, Search, Filter } from 'lucide-react';
+import { Monitor, Wifi, WifiOff, Search, Filter, Trash2 } from 'lucide-react';
 
 interface Device {
   id: string;
@@ -23,25 +24,27 @@ interface Device {
 export default function DevicesPage() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline'>('all');
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const devicesRes = await devicesApi.getAll();
-        if (devicesRes.success) {
-          setDevices(devicesRes.data);
-        }
-      } catch (error) {
-        // Error handling without console.error
-      } finally {
-        setIsLoading(false);
+  const fetchDevices = async () => {
+    try {
+      const devicesRes = await devicesApi.getAll();
+      if (devicesRes.success) {
+        setDevices(devicesRes.data);
       }
-    };
-    fetchData();
+    } catch (error) {
+      // Error handling without console.error
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDevices();
   }, []);
 
   // Filtered devices
@@ -72,6 +75,23 @@ export default function DevicesPage() {
     online: devices.filter(d => d.is_active).length,
     offline: devices.filter(d => !d.is_active).length,
   }), [devices]);
+
+  const handleDeleteDevice = async (device: Device) => {
+    if (!confirm(`"${device.device_id}" 기기를 삭제하시겠습니까?\n\n관련된 모든 세션과 로그도 함께 삭제됩니다.\n이 작업은 되돌릴 수 없습니다.`)) return;
+
+    setIsDeleting(device.id);
+    try {
+      const result = await devicesApi.delete(device.id);
+      if (result.success) {
+        alert(`기기가 삭제되었습니다.\n- 삭제된 로그: ${result.logs_deleted}건\n- 삭제된 세션: ${result.sessions_deleted}건`);
+        fetchDevices();
+      }
+    } catch (error) {
+      alert('기기 삭제에 실패했습니다.');
+    } finally {
+      setIsDeleting(null);
+    }
+  };
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -176,6 +196,7 @@ export default function DevicesPage() {
                         <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">모델</th>
                         <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">마지막 활동</th>
                         <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">등록일</th>
+                        <th className="text-center py-3 px-4 text-sm font-medium text-gray-500">삭제</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -205,6 +226,17 @@ export default function DevicesPage() {
                           </td>
                           <td className="py-3 px-4 text-sm text-gray-600">
                             {formatDate(device.created_at, 'yyyy-MM-dd')}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeleteDevice(device)}
+                              disabled={isDeleting === device.id}
+                              className="text-red-600 border-red-300 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
                           </td>
                         </tr>
                       ))}

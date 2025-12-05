@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/Badge';
 import { logsApi, devicesApi } from '@/utils/api';
 import { formatDate, getActionTypeLabel } from '@/utils/format';
 import { format, subDays } from 'date-fns';
-import { Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Filter, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 
 const actionColors: Record<string, 'default' | 'success' | 'warning' | 'info'> = {
   SELECT: 'info',
@@ -21,11 +21,15 @@ const actionColors: Record<string, 'default' | 'success' | 'warning' | 'info'> =
   WATCH_RESUME: 'success',
 };
 
+const MAX_WATCH_TIME = 20 * 60; // 20분 (초)
+
 export default function LogsPage() {
   const [logs, setLogs] = useState<any[]>([]);
   const [devices, setDevices] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [filters, setFilters] = useState({
     startDate: '',
@@ -63,42 +67,44 @@ export default function LogsPage() {
     fetchOptions();
   }, []);
 
-  useEffect(() => {
+  const fetchLogs = async () => {
     if (!isInitialized || !filters.startDate || !filters.endDate) return;
 
-    const fetchLogs = async () => {
-      setIsLoading(true);
-      try {
-        const response = await logsApi.getByDateRange({
-          startDate: new Date(filters.startDate).toISOString(),
-          endDate: new Date(filters.endDate + 'T23:59:59').toISOString(),
-          deviceId: filters.deviceId || undefined,
-        });
-        if (response.success) {
-          let filteredLogs = response.data;
+    setIsLoading(true);
+    try {
+      const response = await logsApi.getByDateRange({
+        startDate: new Date(filters.startDate).toISOString(),
+        endDate: new Date(filters.endDate + 'T23:59:59').toISOString(),
+        deviceId: filters.deviceId || undefined,
+      });
+      if (response.success) {
+        let filteredLogs = response.data;
 
-          // Filter by action type
-          if (filters.actionType) {
-            filteredLogs = filteredLogs.filter((l: any) => l.action_type === filters.actionType);
-          }
-
-          // Filter by search term
-          if (filters.search) {
-            const searchLower = filters.search.toLowerCase();
-            filteredLogs = filteredLogs.filter((l: any) =>
-              l.content_name?.toLowerCase().includes(searchLower) ||
-              l.device_info?.toLowerCase().includes(searchLower)
-            );
-          }
-
-          setLogs(filteredLogs);
+        // Filter by action type
+        if (filters.actionType) {
+          filteredLogs = filteredLogs.filter((l: any) => l.action_type === filters.actionType);
         }
-      } catch {
-        // Error handled silently
-      } finally {
-        setIsLoading(false);
+
+        // Filter by search term
+        if (filters.search) {
+          const searchLower = filters.search.toLowerCase();
+          filteredLogs = filteredLogs.filter((l: any) =>
+            l.content_name?.toLowerCase().includes(searchLower) ||
+            l.device_info?.toLowerCase().includes(searchLower)
+          );
+        }
+
+        setLogs(filteredLogs);
+        setSelectedIds(new Set());
       }
-    };
+    } catch {
+      // Error handled silently
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchLogs();
   }, [filters, isInitialized]);
 
@@ -108,6 +114,82 @@ export default function LogsPage() {
   );
 
   const totalPages = Math.ceil(logs.length / pagination.limit);
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === paginatedLogs.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(paginatedLogs.map(log => log.id)));
+    }
+  };
+
+  const handleSelectOne = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+
+    if (!confirm(`선택한 ${selectedIds.size}개의 로그를 삭제하시겠습니까?`)) return;
+
+    setIsDeleting(true);
+    try {
+      const result = await logsApi.deleteBulk(Array.from(selectedIds));
+      if (result.success) {
+        alert(`${result.deleted_count}개의 로그가 삭제되었습니다.`);
+        fetchLogs();
+      }
+    } catch (error) {
+      alert('로그 삭제에 실패했습니다.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    if (!filters.startDate || !filters.endDate) {
+      alert('기간을 선택해주세요.');
+      return;
+    }
+
+    if (!confirm(`${filters.startDate} ~ ${filters.endDate} 기간의 모든 로그(${logs.length}건)를 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`)) return;
+
+    setIsDeleting(true);
+    try {
+      const result = await logsApi.deleteByDateRange({
+        startDate: new Date(filters.startDate).toISOString(),
+        endDate: new Date(filters.endDate + 'T23:59:59').toISOString(),
+      });
+      if (result.success) {
+        alert(`${result.deleted_count}개의 로그가 삭제되었습니다.`);
+        fetchLogs();
+      }
+    } catch (error) {
+      alert('로그 삭제에 실패했습니다.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const formatWatchTime = (duration: number | null | undefined, actionType: string) => {
+    if (duration == null || duration <= 0) {
+      return actionType === 'WATCH_END' ? '0초' : '-';
+    }
+    // 최대 20분으로 제한
+    const cappedDuration = Math.min(duration, MAX_WATCH_TIME);
+    const minutes = Math.floor(cappedDuration / 60);
+    const seconds = cappedDuration % 60;
+    if (minutes > 0) {
+      return `${minutes}분 ${seconds}초`;
+    }
+    return `${seconds}초`;
+  };
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -178,6 +260,30 @@ export default function LogsPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>로그 목록 ({logs.length}건)</CardTitle>
+                <div className="flex items-center space-x-2">
+                  {selectedIds.size > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDeleteSelected}
+                      disabled={isDeleting}
+                      className="text-red-600 border-red-300 hover:bg-red-50"
+                    >
+                      <Trash2 className="w-4 h-4 mr-1" />
+                      선택 삭제 ({selectedIds.size})
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDeleteAll}
+                    disabled={isDeleting || logs.length === 0}
+                    className="text-red-600 border-red-300 hover:bg-red-50"
+                  >
+                    <Trash2 className="w-4 h-4 mr-1" />
+                    전체 삭제
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -191,6 +297,14 @@ export default function LogsPage() {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-gray-200">
+                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                            <input
+                              type="checkbox"
+                              checked={paginatedLogs.length > 0 && selectedIds.size === paginatedLogs.length}
+                              onChange={handleSelectAll}
+                              className="rounded border-gray-300"
+                            />
+                          </th>
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">시간</th>
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">기기</th>
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">콘텐츠</th>
@@ -201,6 +315,14 @@ export default function LogsPage() {
                       <tbody>
                         {paginatedLogs.map((log) => (
                           <tr key={log.id} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="py-3 px-4">
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(log.id)}
+                                onChange={() => handleSelectOne(log.id)}
+                                className="rounded border-gray-300"
+                              />
+                            </td>
                             <td className="py-3 px-4 text-sm text-gray-600">
                               {formatDate(log.timestamp, 'MM-dd HH:mm:ss')}
                             </td>
@@ -216,9 +338,7 @@ export default function LogsPage() {
                               </Badge>
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-600 text-right">
-                              {log.duration != null && log.duration > 0
-                                ? `${Math.floor(log.duration / 60)}분 ${log.duration % 60}초`
-                                : log.action_type === 'WATCH_END' ? '0초' : '-'}
+                              {formatWatchTime(log.duration, log.action_type)}
                             </td>
                           </tr>
                         ))}
@@ -229,7 +349,7 @@ export default function LogsPage() {
                   {/* Pagination */}
                   <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
                     <p className="text-sm text-gray-500">
-                      {(pagination.page - 1) * pagination.limit + 1} - {Math.min(pagination.page * pagination.limit, logs.length)} / {logs.length}건
+                      {logs.length > 0 ? (pagination.page - 1) * pagination.limit + 1 : 0} - {Math.min(pagination.page * pagination.limit, logs.length)} / {logs.length}건
                     </p>
                     <div className="flex items-center space-x-2">
                       <Button
@@ -241,7 +361,7 @@ export default function LogsPage() {
                         <ChevronLeft className="w-4 h-4" />
                       </Button>
                       <span className="text-sm text-gray-600">
-                        {pagination.page} / {totalPages}
+                        {pagination.page} / {totalPages || 1}
                       </span>
                       <Button
                         variant="outline"

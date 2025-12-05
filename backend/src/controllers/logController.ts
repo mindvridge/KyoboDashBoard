@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ContentLogService } from '../services/contentLogService';
+import { ContentLogModel } from '../models/contentLog';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { getKoreaDateRange } from '../utils/timezone';
 
@@ -204,6 +205,90 @@ export class LogController {
       res.json({
         success: true,
         data: stats,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * DELETE /api/logs/:id
+   * Delete a single log
+   */
+  static async delete(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const deleted = await ContentLogModel.delete(id);
+
+      if (!deleted) {
+        res.status(404).json({
+          success: false,
+          error: { code: 'NOT_FOUND', message: '로그를 찾을 수 없습니다' },
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        message: '로그가 삭제되었습니다',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/logs/delete-bulk
+   * Delete multiple logs
+   */
+  static async deleteBulk(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { ids } = req.body;
+
+      if (!Array.isArray(ids) || ids.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_INPUT', message: '삭제할 로그 ID 목록이 필요합니다' },
+        });
+        return;
+      }
+
+      const deletedCount = await ContentLogModel.deleteMany(ids);
+
+      res.json({
+        success: true,
+        message: `${deletedCount}개의 로그가 삭제되었습니다`,
+        deleted_count: deletedCount,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * DELETE /api/logs/by-date-range
+   * Delete logs by date range
+   */
+  static async deleteByDateRange(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { start_date, end_date } = req.query;
+
+      if (!start_date || !end_date) {
+        res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_INPUT', message: '시작일과 종료일이 필요합니다' },
+        });
+        return;
+      }
+
+      const startDate = new Date(start_date as string);
+      const endDate = new Date(end_date as string);
+      const deletedCount = await ContentLogModel.deleteByDateRange(startDate, endDate);
+
+      res.json({
+        success: true,
+        message: `${deletedCount}개의 로그가 삭제되었습니다`,
+        deleted_count: deletedCount,
       });
     } catch (error) {
       next(error);
