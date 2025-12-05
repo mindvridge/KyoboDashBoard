@@ -177,66 +177,95 @@ export default function LogsPage() {
     }
   };
 
-  const getApiBaseUrl = () => {
-    return process.env.NEXT_PUBLIC_API_URL || 'https://kyobodashboard-production.up.railway.app/api';
-  };
+  const handleDownload = async (type: 'all' | 'current' | 'watch' | 'monthly' | 'yearly') => {
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, '') || 'https://kyobodashboard-production.up.railway.app';
+    const token = localStorage.getItem('auth_token');
 
-  const handleDownload = (type: 'all' | 'current' | 'watch' | 'monthly' | 'yearly') => {
-    const baseUrl = getApiBaseUrl();
-    let url = `${baseUrl}/stats/export/logs?format=csv`;
+    if (!token) {
+      alert('로그인이 필요합니다.');
+      return;
+    }
+
+    const query = new URLSearchParams();
+    query.set('format', 'csv');
 
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
 
+    let filename = 'logs';
+
     switch (type) {
       case 'current':
-        // Download with current filter
-        if (filters.startDate) {
-          url += `&start_date=${new Date(filters.startDate).toISOString()}`;
-        }
-        if (filters.endDate) {
-          url += `&end_date=${new Date(filters.endDate + 'T23:59:59').toISOString()}`;
-        }
-        if (filters.deviceId) {
-          url += `&device_id=${filters.deviceId}`;
-        }
-        if (filters.actionType) {
-          url += `&action_type=${filters.actionType}`;
-        }
+        if (filters.startDate) query.set('start_date', new Date(filters.startDate).toISOString());
+        if (filters.endDate) query.set('end_date', new Date(filters.endDate + 'T23:59:59').toISOString());
+        if (filters.deviceId) query.set('device_id', filters.deviceId);
+        if (filters.actionType) query.set('action_type', filters.actionType);
+        filename = `logs_${filters.startDate}_${filters.endDate}`;
         break;
       case 'watch':
-        // Download only watch logs (WATCH_END with duration)
-        url += `&action_type=WATCH_END`;
-        if (filters.startDate) {
-          url += `&start_date=${new Date(filters.startDate).toISOString()}`;
-        }
-        if (filters.endDate) {
-          url += `&end_date=${new Date(filters.endDate + 'T23:59:59').toISOString()}`;
-        }
+        query.set('action_type', 'WATCH_END');
+        if (filters.startDate) query.set('start_date', new Date(filters.startDate).toISOString());
+        if (filters.endDate) query.set('end_date', new Date(filters.endDate + 'T23:59:59').toISOString());
+        filename = `watch_logs_${filters.startDate}_${filters.endDate}`;
         break;
-      case 'monthly':
-        // Download current month
+      case 'monthly': {
         const monthStart = new Date(year, month - 1, 1);
         const monthEnd = new Date(year, month, 0, 23, 59, 59);
-        url += `&start_date=${monthStart.toISOString()}&end_date=${monthEnd.toISOString()}`;
+        query.set('start_date', monthStart.toISOString());
+        query.set('end_date', monthEnd.toISOString());
+        filename = `logs_${year}-${String(month).padStart(2, '0')}`;
         break;
-      case 'yearly':
-        // Download current year
+      }
+      case 'yearly': {
         const yearStart = new Date(year, 0, 1);
         const yearEnd = new Date(year, 11, 31, 23, 59, 59);
-        url += `&start_date=${yearStart.toISOString()}&end_date=${yearEnd.toISOString()}`;
+        query.set('start_date', yearStart.toISOString());
+        query.set('end_date', yearEnd.toISOString());
+        filename = `logs_${year}`;
         break;
+      }
       case 'all':
-      default:
-        // Download all (last 365 days)
+      default: {
         const allStart = new Date();
         allStart.setFullYear(allStart.getFullYear() - 1);
-        url += `&start_date=${allStart.toISOString()}&end_date=${now.toISOString()}`;
+        query.set('start_date', allStart.toISOString());
+        query.set('end_date', now.toISOString());
+        filename = 'logs_all';
         break;
+      }
     }
 
-    window.open(url, '_blank');
+    try {
+      const response = await fetch(`${baseUrl}/api/stats/export/logs?${query}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error?.message || `다운로드 실패: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+
+      if (blob.size === 0) {
+        alert('다운로드할 로그가 없습니다.');
+        return;
+      }
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${filename}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '다운로드에 실패했습니다.');
+    }
   };
 
   const formatWatchTime = (duration: number | null | undefined, actionType: string) => {
