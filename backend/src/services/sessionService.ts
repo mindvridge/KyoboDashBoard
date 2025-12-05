@@ -8,6 +8,7 @@ import { cacheGet, cacheSet, cacheDelete, cacheInvalidatePattern } from '../conf
 import { RealtimeService } from './realtimeService';
 import { transaction } from '../config/database';
 import { v4 as uuidv4 } from 'uuid';
+import { formatKoreaISO } from '../utils/timezone';
 
 export class SessionService {
   /**
@@ -153,7 +154,8 @@ export class SessionService {
   }
 
   static async getSessionStats(startDate: Date, endDate: Date) {
-    const cacheKey = `stats:sessions:${startDate.toISOString()}:${endDate.toISOString()}`;
+    // 한국 시간(KST) 기준 캐시 키 생성
+    const cacheKey = `stats:sessions:${formatKoreaISO(startDate)}:${formatKoreaISO(endDate)}`;
     const cached = await cacheGet(cacheKey);
     if (cached) return cached;
 

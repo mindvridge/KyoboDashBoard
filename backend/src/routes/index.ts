@@ -7,6 +7,7 @@ import spaceRoutes from './spaces';
 import videoRoutes from './videos';
 import userAuthRoutes from './userAuth';
 import adminRoutes from './admin';
+import { formatKoreaISO } from '../utils/timezone';
 
 const router = Router();
 
@@ -15,7 +16,7 @@ router.get('/health', (req, res) => {
   res.json({
     success: true,
     status: 'healthy',
-    timestamp: new Date().toISOString(),
+    timestamp: formatKoreaISO(new Date()),
   });
 });
 

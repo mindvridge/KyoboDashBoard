@@ -4,6 +4,7 @@ import { DeviceModel } from '../models/device';
 import { DeviceRegistrationRequest } from '../types';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../utils/logger';
+import { formatKoreaISO } from '../utils/timezone';
 
 export class DeviceController {
   /**
@@ -155,7 +156,7 @@ export class DeviceController {
       res.json({
         success: true,
         message: 'Heartbeat received',
-        timestamp: new Date().toISOString(),
+        timestamp: formatKoreaISO(new Date()),
       });
     } catch (error) {
       next(error);
