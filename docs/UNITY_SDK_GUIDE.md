@@ -167,24 +167,21 @@ Task<bool> LogSessionEnd(float lobbyTimeSeconds = 0)
 ### 5.4 콘텐츠 로깅 메서드
 
 ```csharp
-// 콘텐츠 선택
+// 콘텐츠 선택 (간편 메서드 - Fire and Forget)
 void LogContentSelect(int contentId)
+
+// 콘텐츠 선택 (async 버전)
+Task<bool> LogContentSelectAsync(string contentId, string contentName, Dictionary<string, object> metadata = null)
 Task<bool> LogContentSelect(string contentId, string contentName, Dictionary<string, object> metadata = null)
 
 // 시청 시작
 Task<bool> LogWatchStart(string contentId, string contentName)
 
-// 시청 종료
+// 시청 종료 (간편 메서드 - Fire and Forget)
 void LogWatchEnd(string contentId, string contentName, float durationSeconds)
 
-// 시청 시간 기록 (간편 메서드)
-Task<bool> LogWatchTime(string contentId, float durationSeconds)
-
-// 일시정지
-Task<bool> LogWatchPause(string contentId, string contentName)
-
-// 재개
-Task<bool> LogWatchResume(string contentId, string contentName)
+// 시청 종료 (async 버전)
+Task<bool> LogWatchEndAsync(string contentId, string contentName, float durationSeconds)
 
 // 콘텐츠 전환
 Task<bool> LogContentSwitch(string fromContentId, string toContentId, string toContentName)
@@ -325,29 +322,32 @@ public class VideoPlayerController : MonoBehaviour
         currentContentId = id.ToString();
         currentContentName = name;
 
+        // 간편 메서드 (Fire and Forget)
         VRLogger.Instance.LogContentSelect(id);
     }
 
-    public void OnVideoStart()
+    public async void OnVideoStart()
     {
         watchStartTime = Time.time;
-        VRLogger.Instance.LogWatchStart(currentContentId, currentContentName);
+        await VRLogger.Instance.LogWatchStart(currentContentId, currentContentName);
     }
 
     public void OnVideoEnd()
     {
         float duration = Time.time - watchStartTime;
+        // 간편 메서드 (Fire and Forget)
         VRLogger.Instance.LogWatchEnd(currentContentId, currentContentName, duration);
     }
 
-    public void OnVideoPause()
+    // async 버전이 필요한 경우
+    public async void OnVideoEndAsync()
     {
-        VRLogger.Instance.LogWatchPause(currentContentId, currentContentName);
-    }
-
-    public void OnVideoResume()
-    {
-        VRLogger.Instance.LogWatchResume(currentContentId, currentContentName);
+        float duration = Time.time - watchStartTime;
+        bool success = await VRLogger.Instance.LogWatchEndAsync(currentContentId, currentContentName, duration);
+        if (!success)
+        {
+            Debug.LogWarning("시청 종료 로그 전송 실패 - 로컬에 저장됨");
+        }
     }
 }
 ```
