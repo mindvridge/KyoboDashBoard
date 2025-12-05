@@ -93,52 +93,6 @@ export class ContentLogService {
     return log;
   }
 
-  /**
-   * Log lobby event
-   */
-  static async logLobbyEvent(
-    sessionId: string,
-    actionType: 'LOBBY_ENTER' | 'LOBBY_EXIT',
-    metadata?: Record<string, unknown>
-  ): Promise<ContentLog> {
-    const session = await SessionModel.findById(sessionId);
-    if (!session) {
-      throw new NotFoundError('Session not found');
-    }
-
-    return ContentLogModel.create({
-      session_id: sessionId,
-      content_id: 'lobby',
-      content_name: 'Lobby',
-      action_type: actionType,
-      metadata,
-    });
-  }
-
-  /**
-   * Log content switch event
-   */
-  static async logContentSwitch(
-    sessionId: string,
-    fromContentId: string,
-    toContentId: string,
-    toContentName: string,
-    metadata?: Record<string, unknown>
-  ): Promise<ContentLog> {
-    const session = await SessionModel.findById(sessionId);
-    if (!session) {
-      throw new NotFoundError('Session not found');
-    }
-
-    return ContentLogModel.create({
-      session_id: sessionId,
-      content_id: toContentId,
-      content_name: toContentName,
-      action_type: 'CONTENT_SWITCH',
-      metadata: { ...metadata, from_content_id: fromContentId },
-    });
-  }
-
   static async getLogsBySession(sessionId: string): Promise<ContentLog[]> {
     return ContentLogModel.findBySessionId(sessionId);
   }

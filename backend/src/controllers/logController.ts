@@ -56,50 +56,6 @@ export class LogController {
   }
 
   /**
-   * POST /api/logs/lobby
-   * Log lobby events
-   */
-  static async lobby(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const { session_id, action_type, metadata } = req.body;
-
-      const log = await ContentLogService.logLobbyEvent(session_id, action_type, metadata);
-
-      res.status(201).json({
-        success: true,
-        data: { log_id: log.id },
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  /**
-   * POST /api/logs/content-switch
-   * Log content switch event
-   */
-  static async contentSwitch(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const { session_id, from_content_id, to_content_id, to_content_name, metadata } = req.body;
-
-      const log = await ContentLogService.logContentSwitch(
-        session_id,
-        from_content_id,
-        to_content_id,
-        to_content_name,
-        metadata
-      );
-
-      res.status(201).json({
-        success: true,
-        data: { log_id: log.id },
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  /**
    * GET /api/logs/recent
    * Get recent logs
    */
