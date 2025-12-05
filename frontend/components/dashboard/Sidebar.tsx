@@ -9,7 +9,6 @@ import {
   FileText,
   Smartphone,
   Settings,
-  Bell,
   Video,
   Users,
 } from 'lucide-react';
@@ -20,7 +19,6 @@ const navigation = [
   { name: '로그 조회', href: '/logs', icon: FileText },
   { name: '비디오 관리', href: '/videos', icon: Video },
   { name: '기기 관리', href: '/devices', icon: Smartphone },
-  { name: '알림', href: '/alerts', icon: Bell },
   { name: '관리자 관리', href: '/admin', icon: Users },
 ];
 

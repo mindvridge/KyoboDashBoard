@@ -112,6 +112,69 @@ export class ContentLogModel {
     return query(sql, [startDate, endDate]);
   }
 
+  /**
+   * 특정 날짜의 콘텐츠별 시청 통계 (대시보드 캘린더용)
+   */
+  static async getDailyContentStats(date: Date) {
+    const sql = `
+      SELECT
+        cl.content_id,
+        cl.content_name,
+        COUNT(CASE WHEN cl.action_type = 'SELECT' THEN 1 END) as view_count,
+        COALESCE(SUM(CASE WHEN cl.action_type = 'WATCH_END' THEN LEAST(cl.duration, 1200) ELSE 0 END), 0) as total_watch_time
+      FROM content_logs cl
+      WHERE DATE(cl.timestamp AT TIME ZONE 'Asia/Seoul') = DATE($1 AT TIME ZONE 'Asia/Seoul')
+      GROUP BY cl.content_id, cl.content_name
+      ORDER BY total_watch_time DESC
+    `;
+    return query(sql, [date]);
+  }
+
+  /**
+   * 특정 날짜의 기기별 시청 상세 (대시보드 캘린더용)
+   */
+  static async getDailyDeviceViewings(date: Date) {
+    const sql = `
+      SELECT
+        d.id as device_id,
+        d.device_id as device_info,
+        cl.content_id,
+        cl.content_name,
+        COUNT(CASE WHEN cl.action_type = 'SELECT' THEN 1 END) as view_count,
+        COALESCE(SUM(CASE WHEN cl.action_type = 'WATCH_END' THEN LEAST(cl.duration, 1200) ELSE 0 END), 0) as total_watch_time,
+        MIN(cl.timestamp) as first_view,
+        MAX(cl.timestamp) as last_view
+      FROM content_logs cl
+      JOIN sessions s ON cl.session_id = s.id
+      JOIN devices d ON s.device_id = d.id
+      WHERE DATE(cl.timestamp AT TIME ZONE 'Asia/Seoul') = DATE($1 AT TIME ZONE 'Asia/Seoul')
+      GROUP BY d.id, d.device_id, cl.content_id, cl.content_name
+      ORDER BY d.device_id, total_watch_time DESC
+    `;
+    return query(sql, [date]);
+  }
+
+  /**
+   * 월간 일별 시청 통계 요약 (캘린더 히트맵용)
+   */
+  static async getMonthlyDailySummary(year: number, month: number) {
+    const sql = `
+      SELECT
+        DATE(cl.timestamp AT TIME ZONE 'Asia/Seoul') as date,
+        COUNT(DISTINCT d.id) as device_count,
+        COUNT(DISTINCT cl.content_id) as content_count,
+        COALESCE(SUM(CASE WHEN cl.action_type = 'WATCH_END' THEN LEAST(cl.duration, 1200) ELSE 0 END), 0) as total_watch_time
+      FROM content_logs cl
+      JOIN sessions s ON cl.session_id = s.id
+      JOIN devices d ON s.device_id = d.id
+      WHERE EXTRACT(YEAR FROM cl.timestamp AT TIME ZONE 'Asia/Seoul') = $1
+        AND EXTRACT(MONTH FROM cl.timestamp AT TIME ZONE 'Asia/Seoul') = $2
+      GROUP BY DATE(cl.timestamp AT TIME ZONE 'Asia/Seoul')
+      ORDER BY date
+    `;
+    return query(sql, [year, month]);
+  }
+
   static async getHourlyDistribution(date: Date) {
     const sql = `
       SELECT

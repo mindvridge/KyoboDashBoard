@@ -9,6 +9,7 @@ import { SessionChart } from '@/components/charts/SessionChart';
 import { PopularContentChart } from '@/components/charts/PopularContentChart';
 import { WeeklyPopularChart } from '@/components/charts/WeeklyPopularChart';
 import { TodayViewsChart } from '@/components/charts/TodayViewsChart';
+import { ViewingCalendar } from '@/components/charts/ViewingCalendar';
 import { useDashboard } from '@/hooks/useDashboard';
 import { useSocket } from '@/hooks/useSocket';
 import { formatDuration, formatNumber } from '@/utils/format';
@@ -81,6 +82,11 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <WeeklyPopularChart />
             <TodayViewsChart />
+          </div>
+
+          {/* Viewing Calendar */}
+          <div className="mb-6">
+            <ViewingCalendar />
           </div>
 
           {/* Bottom Row */}

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { StatsService } from '../services/statsService';
 import { ContentLogService } from '../services/contentLogService';
+import { ContentLogModel } from '../models/contentLog';
 import { AlertService } from '../services/alertService';
 import { getKoreaDateRange, getKoreaTime } from '../utils/timezone';
 
@@ -250,6 +251,91 @@ export class StatsController {
       res.json({
         success: true,
         data: alert,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/stats/calendar/monthly
+   * Get monthly daily summary for calendar heatmap
+   */
+  static async getMonthlyCalendar(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { year, month } = req.query;
+      const now = getKoreaTime();
+      const targetYear = year ? parseInt(year as string) : now.getFullYear();
+      const targetMonth = month ? parseInt(month as string) : now.getMonth() + 1;
+
+      const data = await ContentLogModel.getMonthlyDailySummary(targetYear, targetMonth);
+
+      res.json({
+        success: true,
+        data: data.map((d: any) => ({
+          date: d.date,
+          device_count: parseInt(d.device_count || '0', 10),
+          content_count: parseInt(d.content_count || '0', 10),
+          total_watch_time: parseInt(d.total_watch_time || '0', 10),
+        })),
+        year: targetYear,
+        month: targetMonth,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/stats/calendar/daily
+   * Get daily content stats for a specific date
+   */
+  static async getDailyCalendar(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { date } = req.query;
+      if (!date) {
+        res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_INPUT', message: '날짜가 필요합니다' },
+        });
+        return;
+      }
+
+      const targetDate = new Date(date as string);
+      const contentStats = await ContentLogModel.getDailyContentStats(targetDate);
+      const deviceViewings = await ContentLogModel.getDailyDeviceViewings(targetDate);
+
+      // Group device viewings by device
+      const deviceMap = new Map<string, any>();
+      for (const row of deviceViewings as any[]) {
+        const deviceId = row.device_id;
+        if (!deviceMap.has(deviceId)) {
+          deviceMap.set(deviceId, {
+            device_id: deviceId,
+            device_info: row.device_info,
+            contents: [],
+          });
+        }
+        deviceMap.get(deviceId).contents.push({
+          content_id: row.content_id,
+          content_name: row.content_name,
+          view_count: parseInt(row.view_count || '0', 10),
+          total_watch_time: parseInt(row.total_watch_time || '0', 10),
+          first_view: row.first_view,
+          last_view: row.last_view,
+        });
+      }
+
+      res.json({
+        success: true,
+        date: date,
+        content_stats: (contentStats as any[]).map((c: any) => ({
+          content_id: c.content_id,
+          content_name: c.content_name,
+          view_count: parseInt(c.view_count || '0', 10),
+          total_watch_time: parseInt(c.total_watch_time || '0', 10),
+        })),
+        device_viewings: Array.from(deviceMap.values()),
       });
     } catch (error) {
       next(error);

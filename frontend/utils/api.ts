@@ -82,6 +82,29 @@ export const statsApi = {
     if (token) query.set('token', token);
     return `${API_BASE}/api/stats/export/logs?${query}`;
   },
+  getCalendarMonthly: (params: { year?: number; month?: number }) => {
+    const query = new URLSearchParams();
+    if (params.year) query.set('year', String(params.year));
+    if (params.month) query.set('month', String(params.month));
+    return fetchApiAuth<{
+      success: boolean;
+      data: Array<{ date: string; device_count: number; content_count: number; total_watch_time: number }>;
+      year: number;
+      month: number;
+    }>(`/stats/calendar/monthly?${query}`);
+  },
+  getCalendarDaily: (date: string) => {
+    return fetchApiAuth<{
+      success: boolean;
+      date: string;
+      content_stats: Array<{ content_id: string; content_name: string; view_count: number; total_watch_time: number }>;
+      device_viewings: Array<{
+        device_id: string;
+        device_info: string;
+        contents: Array<{ content_id: string; content_name: string; view_count: number; total_watch_time: number }>;
+      }>;
+    }>(`/stats/calendar/daily?date=${date}`);
+  },
 };
 
 // Sessions API

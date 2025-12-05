@@ -368,4 +368,51 @@ router.get('/alerts', StatsController.getAlerts);
  */
 router.post('/alerts/:id/resolve', StatsController.resolveAlert);
 
+/**
+ * @swagger
+ * /stats/calendar/monthly:
+ *   get:
+ *     summary: 월간 일별 시청 통계
+ *     description: 캘린더용 월간 일별 시청 요약 데이터를 조회합니다.
+ *     tags: [Stats]
+ *     parameters:
+ *       - in: query
+ *         name: year
+ *         schema:
+ *           type: integer
+ *         description: 연도 (기본값: 현재 연도)
+ *       - in: query
+ *         name: month
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 12
+ *         description: 월 (기본값: 현재 월)
+ *     responses:
+ *       200:
+ *         description: 월간 일별 통계
+ */
+router.get('/calendar/monthly', StatsController.getMonthlyCalendar);
+
+/**
+ * @swagger
+ * /stats/calendar/daily:
+ *   get:
+ *     summary: 특정 날짜 시청 상세
+ *     description: 특정 날짜의 콘텐츠별/기기별 시청 상세 정보를 조회합니다.
+ *     tags: [Stats]
+ *     parameters:
+ *       - in: query
+ *         name: date
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: 조회할 날짜 (YYYY-MM-DD)
+ *     responses:
+ *       200:
+ *         description: 날짜별 시청 상세
+ */
+router.get('/calendar/daily', StatsController.getDailyCalendar);
+
 export default router;
