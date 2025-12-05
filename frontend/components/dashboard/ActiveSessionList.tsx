@@ -4,7 +4,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Session } from '@/types';
 import { formatDuration, formatRelativeTime } from '@/utils/format';
-import { Monitor, Clock, MapPin } from 'lucide-react';
+import { Monitor, Clock } from 'lucide-react';
 
 interface ActiveSessionListProps {
   sessions: Session[];
@@ -67,17 +67,11 @@ export function ActiveSessionList({ sessions, isLoading }: ActiveSessionListProp
                     </p>
                     <Badge variant="success">진행 중</Badge>
                   </div>
-                  <div className="flex items-center mt-1 text-xs text-gray-500 space-x-3">
-                    <span className="flex items-center">
-                      <MapPin className="w-3 h-3 mr-1" />
-                      {session.space_name || '알 수 없는 위치'}
-                    </span>
-                    <span className="flex items-center">
-                      <Clock className="w-3 h-3 mr-1" />
-                      {session.current_duration
-                        ? formatDuration(session.current_duration)
-                        : formatRelativeTime(session.start_time)}
-                    </span>
+                  <div className="flex items-center mt-1 text-xs text-gray-500">
+                    <Clock className="w-3 h-3 mr-1" />
+                    {session.current_duration
+                      ? formatDuration(session.current_duration)
+                      : formatRelativeTime(session.start_time)}
                   </div>
                 </div>
               </div>
