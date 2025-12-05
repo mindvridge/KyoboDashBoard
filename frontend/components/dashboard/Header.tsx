@@ -45,12 +45,6 @@ export function Header({ title, onRefresh, isLoading }: HeaderProps) {
             새로고침
           </Button>
 
-          {/* Connection Status */}
-          <div className="flex items-center space-x-2 px-3 py-1.5 bg-gray-100 rounded-lg">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-            <span className="text-sm text-gray-600">실시간 연결됨</span>
-          </div>
-
           {/* User Info & Logout */}
           <div className="flex items-center space-x-2 pl-3 border-l border-gray-200">
             <div className="flex items-center space-x-2 px-3 py-1.5 bg-primary-50 rounded-lg">

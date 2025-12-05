@@ -11,16 +11,11 @@ import { WeeklyPopularChart } from '@/components/charts/WeeklyPopularChart';
 import { TodayViewsChart } from '@/components/charts/TodayViewsChart';
 import { ViewingCalendar } from '@/components/charts/ViewingCalendar';
 import { useDashboard } from '@/hooks/useDashboard';
-import { useSocket } from '@/hooks/useSocket';
 import { formatDuration, formatNumber } from '@/utils/format';
 import { Users, Clock, PlayCircle } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { stats, activeSessions, alerts, isLoading, error, refresh, handleRealtimeEvent } = useDashboard();
-
-  useSocket({
-    onEvent: handleRealtimeEvent,
-  });
+  const { stats, activeSessions, isLoading, error, refresh } = useDashboard();
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -28,7 +23,7 @@ export default function DashboardPage() {
 
       <div className="flex-1">
         <Header
-          title="실시간 대시보드"
+          title="대시보드"
           onRefresh={refresh}
           isLoading={isLoading}
         />
