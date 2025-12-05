@@ -6,7 +6,7 @@ import { Header } from '@/components/dashboard/Header';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
-import { statsApi, spacesApi } from '@/utils/api';
+import { statsApi } from '@/utils/api';
 import { formatNumber, formatDuration } from '@/utils/format';
 import { format, subDays } from 'date-fns';
 import {
@@ -24,25 +24,9 @@ import { Download, Calendar } from 'lucide-react';
 
 export default function AnalyticsPage() {
   const [dateRange, setDateRange] = useState('7');
-  const [spaceId, setSpaceId] = useState('');
-  const [spaces, setSpaces] = useState<any[]>([]);
   const [dailyStats, setDailyStats] = useState<any[]>([]);
   const [popularContents, setPopularContents] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchSpaces = async () => {
-      try {
-        const response = await spacesApi.getAll();
-        if (response.success) {
-          setSpaces(response.data);
-        }
-      } catch {
-        // Error handled silently
-      }
-    };
-    fetchSpaces();
-  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -83,7 +67,7 @@ export default function AnalyticsPage() {
       }
     };
     fetchData();
-  }, [dateRange, spaceId]);
+  }, [dateRange]);
 
   const handleExport = (type: 'sessions' | 'logs') => {
     const endDate = new Date();
@@ -114,32 +98,17 @@ export default function AnalyticsPage() {
           <Card className="mb-6">
             <CardContent className="py-4">
               <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center space-x-2">
-                    <Calendar className="w-5 h-5 text-gray-500" />
-                    <Select
-                      value={dateRange}
-                      onChange={(e) => setDateRange(e.target.value)}
-                      className="w-40"
-                    >
-                      <option value="7">최근 7일</option>
-                      <option value="14">최근 14일</option>
-                      <option value="30">최근 30일</option>
-                      <option value="90">최근 90일</option>
-                    </Select>
-                  </div>
-
+                <div className="flex items-center space-x-2">
+                  <Calendar className="w-5 h-5 text-gray-500" />
                   <Select
-                    value={spaceId}
-                    onChange={(e) => setSpaceId(e.target.value)}
-                    className="w-48"
+                    value={dateRange}
+                    onChange={(e) => setDateRange(e.target.value)}
+                    className="w-40"
                   >
-                    <option value="">전체 공간</option>
-                    {spaces.map((space) => (
-                      <option key={space.id} value={space.id}>
-                        {space.name}
-                      </option>
-                    ))}
+                    <option value="7">최근 7일</option>
+                    <option value="14">최근 14일</option>
+                    <option value="30">최근 30일</option>
+                    <option value="90">최근 90일</option>
                   </Select>
                 </div>
 
