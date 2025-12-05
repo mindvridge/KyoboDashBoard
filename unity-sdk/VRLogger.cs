@@ -48,6 +48,12 @@ namespace VRLogDashboard
         [Header("Local Storage Settings")]
         [SerializeField] private int maxRetryCount = 3;
         [SerializeField] private float networkCheckInterval = 10f;
+
+        [Header("Daily Log Archive")]
+        [Tooltip("모든 로그를 날짜별로 로컬에 저장합니다")]
+        [SerializeField] private bool enableDailyLogArchive = true;
+        [Tooltip("로그 파일 보관 일수 (0 = 무제한)")]
+        [SerializeField] private int logRetentionDays = 30;
         #endregion
 
         #region Private Fields
@@ -59,6 +65,8 @@ namespace VRLogDashboard
         private Coroutine networkCheckCoroutine;
         private bool isNetworkAvailable = true;
         private string localLogFilePath;
+        private string logsDirectoryPath;
+        private static readonly TimeSpan KoreanTimeOffset = TimeSpan.FromHours(9);
         #endregion
 
         #region Events
@@ -102,6 +110,14 @@ namespace VRLogDashboard
             // Initialize local log file path
             localLogFilePath = Path.Combine(Application.persistentDataPath, "pending_logs.json");
             Log($"Local log file path: {localLogFilePath}");
+
+            // Initialize daily logs directory
+            logsDirectoryPath = Path.Combine(Application.persistentDataPath, "logs");
+            if (!Directory.Exists(logsDirectoryPath))
+            {
+                Directory.CreateDirectory(logsDirectoryPath);
+            }
+            Log($"Daily logs directory: {logsDirectoryPath}");
         }
 
         private void Start()
@@ -111,6 +127,12 @@ namespace VRLogDashboard
 
             // Start network monitoring
             StartNetworkMonitoring();
+
+            // Clean up old daily logs
+            if (enableDailyLogArchive && logRetentionDays > 0)
+            {
+                CleanupOldDailyLogs();
+            }
 
             if (autoLogin)
             {
@@ -386,6 +408,64 @@ namespace VRLogDashboard
             return pendingRequests.Count == 0;
         }
 
+        /// <summary>
+        /// 특정 날짜의 로그를 조회합니다. (한국 날짜 기준)
+        /// </summary>
+        /// <param name="date">조회할 날짜 (null이면 오늘)</param>
+        public List<DailyLogEntry> GetDailyLogs(DateTime? date = null)
+        {
+            var targetDate = date ?? (DateTime.UtcNow + KoreanTimeOffset);
+            var dailyLogFile = GetDailyLogFilePath(targetDate);
+
+            if (File.Exists(dailyLogFile))
+            {
+                var json = File.ReadAllText(dailyLogFile);
+                var logList = JsonUtility.FromJson<DailyLogList>(json);
+                return logList?.entries ?? new List<DailyLogEntry>();
+            }
+
+            return new List<DailyLogEntry>();
+        }
+
+        /// <summary>
+        /// 저장된 모든 로그 날짜 목록을 반환합니다.
+        /// </summary>
+        public List<string> GetAvailableLogDates()
+        {
+            var dates = new List<string>();
+
+            if (Directory.Exists(logsDirectoryPath))
+            {
+                var files = Directory.GetFiles(logsDirectoryPath, "*.json");
+                foreach (var file in files)
+                {
+                    var fileName = Path.GetFileNameWithoutExtension(file);
+                    dates.Add(fileName);
+                }
+                dates.Sort();
+                dates.Reverse(); // 최신 날짜가 먼저
+            }
+
+            return dates;
+        }
+
+        /// <summary>
+        /// 로그 저장 디렉토리 경로를 반환합니다.
+        /// </summary>
+        public string GetLogsDirectoryPath()
+        {
+            return logsDirectoryPath;
+        }
+
+        /// <summary>
+        /// 오늘의 로그 파일 경로를 반환합니다. (한국 날짜 기준)
+        /// </summary>
+        public string GetTodayLogFilePath()
+        {
+            var koreanTime = DateTime.UtcNow + KoreanTimeOffset;
+            return GetDailyLogFilePath(koreanTime);
+        }
+
         #endregion
 
         #region Private Methods
@@ -412,13 +492,20 @@ namespace VRLogDashboard
 
         private async Task<bool> QueueRequest(string endpoint, string jsonBody)
         {
+            var koreanTime = DateTime.UtcNow + KoreanTimeOffset;
             var logRequest = new LogRequest
             {
                 endpoint = endpoint,
                 body = jsonBody,
                 retryCount = 0,
-                timestamp = DateTime.UtcNow.ToString("o")
+                timestamp = koreanTime.ToString("yyyy-MM-dd HH:mm:ss")
             };
+
+            // Save to daily log archive (한국 시간 기준)
+            if (enableDailyLogArchive)
+            {
+                SaveToDailyLog(logRequest, koreanTime);
+            }
 
             pendingRequests.Enqueue(logRequest);
             OnPendingLogsChanged?.Invoke(GetPendingLogCount());
@@ -722,6 +809,94 @@ namespace VRLogDashboard
 
         #endregion
 
+        #region Daily Log Archive
+
+        private string GetDailyLogFilePath(DateTime koreanDateTime)
+        {
+            var dateString = koreanDateTime.ToString("yyyy-MM-dd");
+            return Path.Combine(logsDirectoryPath, $"{dateString}.json");
+        }
+
+        private void SaveToDailyLog(LogRequest request, DateTime koreanTime)
+        {
+            try
+            {
+                var dailyLogFile = GetDailyLogFilePath(koreanTime);
+                var dailyLogs = LoadDailyLogFile(dailyLogFile);
+
+                var entry = new DailyLogEntry
+                {
+                    timestamp = request.timestamp,
+                    endpoint = request.endpoint,
+                    body = request.body,
+                    session_id = currentSessionId ?? "",
+                    device_id = deviceId
+                };
+
+                dailyLogs.entries.Add(entry);
+                SaveDailyLogFile(dailyLogFile, dailyLogs);
+
+                Log($"Saved log to daily archive: {koreanTime:yyyy-MM-dd}");
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to save daily log: {ex.Message}");
+            }
+        }
+
+        private DailyLogList LoadDailyLogFile(string filePath)
+        {
+            if (File.Exists(filePath))
+            {
+                var json = File.ReadAllText(filePath);
+                return JsonUtility.FromJson<DailyLogList>(json) ?? new DailyLogList();
+            }
+            return new DailyLogList();
+        }
+
+        private void SaveDailyLogFile(string filePath, DailyLogList logs)
+        {
+            var json = JsonUtility.ToJson(logs, true);
+            File.WriteAllText(filePath, json);
+        }
+
+        private void CleanupOldDailyLogs()
+        {
+            try
+            {
+                if (!Directory.Exists(logsDirectoryPath)) return;
+
+                var files = Directory.GetFiles(logsDirectoryPath, "*.json");
+                var koreanNow = DateTime.UtcNow + KoreanTimeOffset;
+                var cutoffDate = koreanNow.AddDays(-logRetentionDays);
+                var deletedCount = 0;
+
+                foreach (var file in files)
+                {
+                    var fileName = Path.GetFileNameWithoutExtension(file);
+                    if (DateTime.TryParse(fileName, out var fileDate))
+                    {
+                        if (fileDate < cutoffDate)
+                        {
+                            File.Delete(file);
+                            deletedCount++;
+                        }
+                    }
+                }
+
+                if (deletedCount > 0)
+                {
+                    Log($"Cleaned up {deletedCount} old daily log files");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to cleanup old logs: {ex.Message}");
+            }
+        }
+
+        #endregion
+
         #region Data Classes
 
         [Serializable]
@@ -809,6 +984,22 @@ namespace VRLogDashboard
         private class LogRequestList
         {
             public List<LogRequest> requests = new List<LogRequest>();
+        }
+
+        [Serializable]
+        public class DailyLogEntry
+        {
+            public string timestamp;
+            public string endpoint;
+            public string body;
+            public string session_id;
+            public string device_id;
+        }
+
+        [Serializable]
+        public class DailyLogList
+        {
+            public List<DailyLogEntry> entries = new List<DailyLogEntry>();
         }
 
         #endregion
