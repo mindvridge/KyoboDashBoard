@@ -43,11 +43,10 @@ async function fetchApiAuth<T>(endpoint: string, options?: RequestInit): Promise
 // Stats API (requires authentication)
 export const statsApi = {
   getDashboard: () => fetchApiAuth<{ success: boolean; data: any }>('/stats/dashboard'),
-  getDetailed: (params: { startDate?: string; endDate?: string; spaceId?: string }) => {
+  getDetailed: (params: { startDate?: string; endDate?: string }) => {
     const query = new URLSearchParams();
     if (params.startDate) query.set('start_date', params.startDate);
     if (params.endDate) query.set('end_date', params.endDate);
-    if (params.spaceId) query.set('space_id', params.spaceId);
     return fetchApiAuth<{ success: boolean; data: any }>(`/stats/detailed?${query}`);
   },
   getPopular: (params: { startDate?: string; endDate?: string; limit?: number }) => {
@@ -89,11 +88,10 @@ export const statsApi = {
 export const sessionsApi = {
   getActive: () => fetchApi<{ success: boolean; data: any[] }>('/sessions/active'),
   getById: (id: string) => fetchApi<{ success: boolean; data: any }>(`/sessions/${id}`),
-  getByDateRange: (params: { startDate?: string; endDate?: string; spaceId?: string; deviceId?: string }) => {
+  getByDateRange: (params: { startDate?: string; endDate?: string; deviceId?: string }) => {
     const query = new URLSearchParams();
     if (params.startDate) query.set('start_date', params.startDate);
     if (params.endDate) query.set('end_date', params.endDate);
-    if (params.spaceId) query.set('space_id', params.spaceId);
     if (params.deviceId) query.set('device_id', params.deviceId);
     return fetchApi<{ success: boolean; data: any[] }>(`/sessions?${query}`);
   },
@@ -107,35 +105,19 @@ export const logsApi = {
   },
   getBySession: (sessionId: string) =>
     fetchApi<{ success: boolean; data: any[] }>(`/logs/session/${sessionId}`),
-  getByDateRange: (params: { startDate?: string; endDate?: string; spaceId?: string; deviceId?: string; contentId?: string }) => {
+  getByDateRange: (params: { startDate?: string; endDate?: string; deviceId?: string; contentId?: string }) => {
     const query = new URLSearchParams();
     if (params.startDate) query.set('start_date', params.startDate);
     if (params.endDate) query.set('end_date', params.endDate);
-    if (params.spaceId) query.set('space_id', params.spaceId);
     if (params.deviceId) query.set('device_id', params.deviceId);
     if (params.contentId) query.set('content_id', params.contentId);
     return fetchApi<{ success: boolean; data: any[] }>(`/logs?${query}`);
   },
 };
 
-// Spaces API
-export const spacesApi = {
-  getAll: () => fetchApi<{ success: boolean; data: any[] }>('/spaces'),
-  getById: (id: string) => fetchApi<{ success: boolean; data: any }>(`/spaces/${id}`),
-  getStats: (id: string, params: { startDate?: string; endDate?: string }) => {
-    const query = new URLSearchParams();
-    if (params.startDate) query.set('start_date', params.startDate);
-    if (params.endDate) query.set('end_date', params.endDate);
-    return fetchApi<{ success: boolean; data: any }>(`/spaces/${id}/stats?${query}`);
-  },
-};
-
 // Devices API
 export const devicesApi = {
-  getAll: (spaceId?: string) => {
-    const query = spaceId ? `?space_id=${spaceId}` : '';
-    return fetchApi<{ success: boolean; data: any[] }>(`/devices${query}`);
-  },
+  getAll: () => fetchApi<{ success: boolean; data: any[] }>('/devices'),
   getActive: () => fetchApi<{ success: boolean; data: any[] }>('/devices/active'),
   getById: (id: string) => fetchApi<{ success: boolean; data: any }>(`/devices/${id}`),
 };

@@ -7,7 +7,8 @@ import { ActiveSessionList } from '@/components/dashboard/ActiveSessionList';
 import { RecentLogs } from '@/components/dashboard/RecentLogs';
 import { SessionChart } from '@/components/charts/SessionChart';
 import { PopularContentChart } from '@/components/charts/PopularContentChart';
-import { SpaceStatsChart } from '@/components/charts/SpaceStatsChart';
+import { WeeklyPopularChart } from '@/components/charts/WeeklyPopularChart';
+import { TodayViewsChart } from '@/components/charts/TodayViewsChart';
 import { useDashboard } from '@/hooks/useDashboard';
 import { useSocket } from '@/hooks/useSocket';
 import { formatDuration, formatNumber } from '@/utils/format';
@@ -77,11 +78,16 @@ export default function DashboardPage() {
             <PopularContentChart data={stats?.popular_contents || []} />
           </div>
 
+          {/* Weekly Stats Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <WeeklyPopularChart />
+            <TodayViewsChart />
+          </div>
+
           {/* Bottom Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <ActiveSessionList sessions={activeSessions} isLoading={isLoading} />
             <RecentLogs />
-            <SpaceStatsChart data={stats?.space_stats || []} />
           </div>
         </main>
       </div>

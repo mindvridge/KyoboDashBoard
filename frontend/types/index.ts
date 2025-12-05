@@ -10,16 +10,6 @@ export interface ApiResponse<T> {
 }
 
 // Domain Types
-export interface Space {
-  id: string;
-  name: string;
-  location: string;
-  description?: string;
-  device_count?: number;
-  active_sessions?: number;
-  created_at: string;
-}
-
 export interface Device {
   id: string;
   device_id: string;
@@ -33,7 +23,6 @@ export interface Session {
   id: string;
   device_id: string;
   device_info?: string;
-  space_name?: string;
   start_time: string;
   end_time?: string;
   duration?: number;
@@ -47,7 +36,6 @@ export interface ContentLog {
   id: string;
   session_id: string;
   device_info?: string;
-  space_name?: string;
   content_id: string;
   content_name: string;
   action_type: string;
@@ -60,7 +48,6 @@ export interface DashboardStats {
   total_sessions_today: number;
   total_watch_time_today: number;
   popular_contents: PopularContent[];
-  space_stats: SpaceStats[];
   hourly_sessions: HourlySession[];
 }
 
@@ -69,14 +56,6 @@ export interface PopularContent {
   content_name: string;
   view_count: number;
   total_watch_time: number;
-}
-
-export interface SpaceStats {
-  space_id: string;
-  space_name: string;
-  active_devices: number;
-  total_sessions: number;
-  avg_session_duration: number;
 }
 
 export interface HourlySession {
@@ -115,7 +94,6 @@ export interface DateFilter {
 }
 
 export interface LogFilter extends DateFilter {
-  spaceId?: string;
   deviceId?: string;
   contentId?: string;
   actionType?: string;
