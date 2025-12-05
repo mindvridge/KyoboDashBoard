@@ -258,16 +258,20 @@ namespace VRLogDashboard
             }
         }
 
+        /// <summary>
+        /// 콘텐츠 선택 이벤트를 로그합니다. (간편 메서드)
+        /// </summary>
         public void LogContentSelect(int contentId)
         {
             currentVideoID = contentId;
-            LogContentSelect(contentId.ToString(), "");
+            // Fire and forget, but handle errors
+            _ = LogContentSelectAsync(contentId.ToString(), "");
         }
 
         /// <summary>
-        /// 콘텐츠 선택 이벤트를 로그합니다.
+        /// 콘텐츠 선택 이벤트를 로그합니다. (async 버전)
         /// </summary>
-        public async Task<bool> LogContentSelect(string contentId, string contentName, Dictionary<string, object> metadata = null)
+        public async Task<bool> LogContentSelectAsync(string contentId, string contentName, Dictionary<string, object> metadata = null)
         {
             if (!HasActiveSession)
             {
@@ -286,6 +290,14 @@ namespace VRLogDashboard
         }
 
         /// <summary>
+        /// 콘텐츠 선택 이벤트를 로그합니다. (하위 호환성)
+        /// </summary>
+        public async Task<bool> LogContentSelect(string contentId, string contentName, Dictionary<string, object> metadata = null)
+        {
+            return await LogContentSelectAsync(contentId, contentName, metadata);
+        }
+
+        /// <summary>
         /// 콘텐츠 시청 시작을 로그합니다.
         /// </summary>
         public async Task<bool> LogWatchStart(string contentId, string contentName)
@@ -294,35 +306,20 @@ namespace VRLogDashboard
         }
 
         /// <summary>
-        /// 콘텐츠 시청 종료를 로그합니다.
+        /// 콘텐츠 시청 종료를 로그합니다. (간편 메서드 - Fire and Forget)
         /// </summary>
         public void LogWatchEnd(string contentId, string contentName, float durationSeconds)
         {
-            LogWatchEvent(contentId, contentName, "WATCH_END", durationSeconds);
+            // Fire and forget, but handle errors internally
+            _ = LogWatchEndAsync(contentId, contentName, durationSeconds);
         }
 
         /// <summary>
-        /// 콘텐츠 일시정지를 로그합니다.
+        /// 콘텐츠 시청 종료를 로그합니다. (async 버전)
         /// </summary>
-        public async Task<bool> LogWatchPause(string contentId, string contentName)
+        public async Task<bool> LogWatchEndAsync(string contentId, string contentName, float durationSeconds)
         {
-            return await LogWatchEvent(contentId, contentName, "WATCH_PAUSE", 0);
-        }
-
-        /// <summary>
-        /// 콘텐츠 재생 재개를 로그합니다.
-        /// </summary>
-        public async Task<bool> LogWatchResume(string contentId, string contentName)
-        {
-            return await LogWatchEvent(contentId, contentName, "WATCH_RESUME", 0);
-        }
-
-        /// <summary>
-        /// 시청 시간을 로그합니다 (간편 메서드).
-        /// </summary>
-        public async Task<bool> LogWatchTime(string contentId, float durationSeconds)
-        {
-            return await LogWatchEvent(contentId, "", "WATCH_END", durationSeconds);
+            return await LogWatchEvent(contentId, contentName, "WATCH_END", durationSeconds);
         }
 
         /// <summary>
@@ -554,7 +551,6 @@ namespace VRLogDashboard
         private async Task<T> PostRequest<T>(string endpoint, string jsonBody, bool authenticated) where T : class
         {
             var url = serverUrl + endpoint;
-            var tcs = new TaskCompletionSource<T>();
 
             using (var request = new UnityWebRequest(url, "POST"))
             {
@@ -631,37 +627,6 @@ namespace VRLogDashboard
                 yield return webRequest.SendWebRequest();
                 currentSessionId = null;
             }
-        }
-
-        private string GetMacAddress()
-        {
-            // Platform-specific MAC address retrieval
-            #if UNITY_ANDROID && !UNITY_EDITOR
-            try
-            {
-                using (var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
-                using (var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
-                using (var wifiManager = activity.Call<AndroidJavaObject>("getSystemService", "wifi"))
-                using (var wifiInfo = wifiManager.Call<AndroidJavaObject>("getConnectionInfo"))
-                {
-                    return wifiInfo.Call<string>("getMacAddress");
-                }
-            }
-            catch
-            {
-                return GeneratePseudoMac();
-            }
-            #else
-            return GeneratePseudoMac();
-            #endif
-        }
-
-        private string GeneratePseudoMac()
-        {
-            // Generate a consistent pseudo-MAC based on device ID
-            var hash = deviceId.GetHashCode();
-            return $"{(hash & 0xFF):X2}:{((hash >> 8) & 0xFF):X2}:{((hash >> 16) & 0xFF):X2}:" +
-                   $"{((hash >> 24) & 0xFF):X2}:{(hash & 0xFF):X2}:{((hash >> 8) & 0xFF):X2}";
         }
 
         private void Log(string message)
