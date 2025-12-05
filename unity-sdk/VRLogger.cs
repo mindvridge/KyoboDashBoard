@@ -53,7 +53,6 @@ namespace VRLogDashboard
         #region Private Fields
         private string authToken;
         private string currentSessionId;
-        private bool isInitialized = false;
         private Queue<LogRequest> pendingRequests = new Queue<LogRequest>();
         private bool isProcessingQueue = false;
         private Coroutine heartbeatCoroutine;
