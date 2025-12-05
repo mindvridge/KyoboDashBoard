@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { StatsService } from '../services/statsService';
 import { ContentLogService } from '../services/contentLogService';
 import { AlertService } from '../services/alertService';
+import { getKoreaDateRange, getKoreaTime } from '../utils/timezone';
 
 export class StatsController {
   /**
@@ -29,13 +30,15 @@ export class StatsController {
     try {
       const { start_date, end_date, space_id } = req.query;
 
+      // 한국 시간(KST) 기준 날짜 범위
+      const defaultRange = getKoreaDateRange(30);
       const startDate = start_date
         ? new Date(start_date as string)
-        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        : defaultRange.start;
 
       const endDate = end_date
         ? new Date(end_date as string)
-        : new Date();
+        : defaultRange.end;
 
       const stats = await StatsService.getDetailedStats(startDate, endDate, space_id as string);
 
@@ -56,13 +59,15 @@ export class StatsController {
     try {
       const { start_date, end_date, limit } = req.query;
 
+      // 한국 시간(KST) 기준 날짜 범위
+      const defaultRange = getKoreaDateRange(7);
       const startDate = start_date
         ? new Date(start_date as string)
-        : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        : defaultRange.start;
 
       const endDate = end_date
         ? new Date(end_date as string)
-        : new Date();
+        : defaultRange.end;
 
       const popularContents = await ContentLogService.getPopularContents(
         startDate,
@@ -87,13 +92,15 @@ export class StatsController {
     try {
       const { start_date, end_date } = req.query;
 
+      // 한국 시간(KST) 기준 날짜 범위
+      const defaultRange = getKoreaDateRange(30);
       const startDate = start_date
         ? new Date(start_date as string)
-        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        : defaultRange.start;
 
       const endDate = end_date
         ? new Date(end_date as string)
-        : new Date();
+        : defaultRange.end;
 
       const dailyStats = await ContentLogService.getDailyStats(startDate, endDate);
 
@@ -113,7 +120,8 @@ export class StatsController {
   static async getHourly(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { date } = req.query;
-      const targetDate = date ? new Date(date as string) : new Date();
+      // 한국 시간(KST) 기준
+      const targetDate = date ? new Date(date as string) : getKoreaTime();
 
       const hourlyStats = await ContentLogService.getHourlyDistribution(targetDate);
 
@@ -134,13 +142,15 @@ export class StatsController {
     try {
       const { start_date, end_date, space_id, device_id, format } = req.query;
 
+      // 한국 시간(KST) 기준 날짜 범위
+      const defaultRange = getKoreaDateRange(30);
       const startDate = start_date
         ? new Date(start_date as string)
-        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        : defaultRange.start;
 
       const endDate = end_date
         ? new Date(end_date as string)
-        : new Date();
+        : defaultRange.end;
 
       const data = await StatsService.exportSessionData(startDate, endDate, {
         spaceId: space_id as string,
@@ -172,13 +182,15 @@ export class StatsController {
     try {
       const { start_date, end_date, space_id, device_id, format } = req.query;
 
+      // 한국 시간(KST) 기준 날짜 범위
+      const defaultRange = getKoreaDateRange(30);
       const startDate = start_date
         ? new Date(start_date as string)
-        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        : defaultRange.start;
 
       const endDate = end_date
         ? new Date(end_date as string)
-        : new Date();
+        : defaultRange.end;
 
       const data = await StatsService.exportContentLogData(startDate, endDate, {
         spaceId: space_id as string,

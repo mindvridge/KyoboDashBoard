@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { SessionService } from '../services/sessionService';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../utils/logger';
+import { getKoreaDateRange, getKoreaTime } from '../utils/timezone';
 
 export class SessionController {
   /**
@@ -113,13 +114,15 @@ export class SessionController {
     try {
       const { start_date, end_date, space_id, device_id } = req.query;
 
+      // 한국 시간(KST) 기준 날짜 범위
+      const defaultRange = getKoreaDateRange(7);
       const startDate = start_date
         ? new Date(start_date as string)
-        : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // Default: last 7 days
+        : defaultRange.start;
 
       const endDate = end_date
         ? new Date(end_date as string)
-        : new Date();
+        : defaultRange.end;
 
       const sessions = await SessionService.getSessionsByDateRange(
         startDate,
@@ -146,17 +149,19 @@ export class SessionController {
     try {
       const { start_date, end_date } = req.query;
 
+      // 한국 시간(KST) 기준 날짜 범위
+      const defaultRange = getKoreaDateRange(7);
       const startDate = start_date
         ? new Date(start_date as string)
-        : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        : defaultRange.start;
 
       const endDate = end_date
         ? new Date(end_date as string)
-        : new Date();
+        : defaultRange.end;
 
       const [stats, hourly] = await Promise.all([
         SessionService.getSessionStats(startDate, endDate),
-        SessionService.getHourlyDistribution(new Date()),
+        SessionService.getHourlyDistribution(getKoreaTime()),
       ]);
 
       res.json({

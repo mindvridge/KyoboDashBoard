@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { ContentLogService } from '../services/contentLogService';
 import { AuthenticatedRequest } from '../middleware/auth';
+import { getKoreaDateRange } from '../utils/timezone';
 
 export class LogController {
   /**
@@ -152,13 +153,15 @@ export class LogController {
         offset,
       } = req.query;
 
+      // 한국 시간(KST) 기준 날짜 범위
+      const defaultRange = getKoreaDateRange(1); // Default: last 24 hours
       const startDate = start_date
         ? new Date(start_date as string)
-        : new Date(Date.now() - 24 * 60 * 60 * 1000); // Default: last 24 hours
+        : defaultRange.start;
 
       const endDate = end_date
         ? new Date(end_date as string)
-        : new Date();
+        : defaultRange.end;
 
       const logs = await ContentLogService.getLogsByDateRange(startDate, endDate, {
         spaceId: space_id as string,
@@ -188,13 +191,15 @@ export class LogController {
       const { contentId } = req.params;
       const { start_date, end_date } = req.query;
 
+      // 한국 시간(KST) 기준 날짜 범위
+      const defaultRange = getKoreaDateRange(7);
       const startDate = start_date
         ? new Date(start_date as string)
-        : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        : defaultRange.start;
 
       const endDate = end_date
         ? new Date(end_date as string)
-        : new Date();
+        : defaultRange.end;
 
       const stats = await ContentLogService.getContentStats(contentId, startDate, endDate);
 

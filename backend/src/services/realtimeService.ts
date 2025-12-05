@@ -3,6 +3,7 @@ import { Server as HttpServer } from 'http';
 import { Session, ContentLog, RealtimeEvent, RealtimeEventType } from '../types';
 import { logger } from '../utils/logger';
 import { config } from '../config';
+import { formatKoreaISO } from '../utils/timezone';
 
 let io: SocketServer | null = null;
 
@@ -71,7 +72,7 @@ export class RealtimeService {
         device_info: deviceInfo,
         start_time: session.start_time,
       },
-      timestamp: new Date(),
+      timestamp: formatKoreaISO(new Date()),
     });
   }
 
@@ -84,7 +85,7 @@ export class RealtimeService {
         duration: session.duration,
         end_time: session.end_time,
       },
-      timestamp: new Date(),
+      timestamp: formatKoreaISO(new Date()),
     });
   }
 
@@ -99,7 +100,7 @@ export class RealtimeService {
         action_type: log.action_type,
         duration: log.duration,
       },
-      timestamp: new Date(),
+      timestamp: formatKoreaISO(new Date()),
     });
   }
 
@@ -107,7 +108,7 @@ export class RealtimeService {
     this.broadcast({
       type: 'DEVICE_ONLINE',
       data: { device_id: deviceId, device_info: deviceInfo },
-      timestamp: new Date(),
+      timestamp: formatKoreaISO(new Date()),
     });
   }
 
@@ -115,7 +116,7 @@ export class RealtimeService {
     this.broadcast({
       type: 'DEVICE_OFFLINE',
       data: { device_id: deviceId },
-      timestamp: new Date(),
+      timestamp: formatKoreaISO(new Date()),
     });
   }
 
@@ -123,7 +124,7 @@ export class RealtimeService {
     this.broadcast({
       type: 'STATS_UPDATE',
       data: stats,
-      timestamp: new Date(),
+      timestamp: formatKoreaISO(new Date()),
     });
   }
 
@@ -136,7 +137,7 @@ export class RealtimeService {
     this.broadcast({
       type: 'ALERT',
       data: alert,
-      timestamp: new Date(),
+      timestamp: formatKoreaISO(new Date()),
     });
   }
 }
