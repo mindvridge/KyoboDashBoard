@@ -174,4 +174,113 @@ export class ContentLogModel {
 
     return query(sql, params);
   }
+
+  /**
+   * 기기별 영상 시청 내역 조회
+   */
+  static async getWatchHistoryByDevice(deviceId: string, startDate?: Date, endDate?: Date) {
+    let sql = `
+      SELECT
+        cl.content_id,
+        cl.content_name,
+        COUNT(*) as view_count,
+        SUM(CASE WHEN cl.action_type = 'WATCH_END' THEN cl.duration ELSE 0 END) as total_watch_time,
+        MAX(cl.timestamp) as last_watched,
+        MIN(cl.timestamp) as first_watched
+      FROM content_logs cl
+      JOIN sessions s ON cl.session_id = s.id
+      WHERE s.device_id = $1
+        AND cl.action_type IN ('SELECT', 'WATCH_END')
+    `;
+    const params: unknown[] = [deviceId];
+    let paramIndex = 2;
+
+    if (startDate) {
+      sql += ` AND cl.timestamp >= $${paramIndex++}`;
+      params.push(startDate);
+    }
+    if (endDate) {
+      sql += ` AND cl.timestamp <= $${paramIndex++}`;
+      params.push(endDate);
+    }
+
+    sql += `
+      GROUP BY cl.content_id, cl.content_name
+      ORDER BY last_watched DESC
+    `;
+
+    return query(sql, params);
+  }
+
+  /**
+   * 기기별 상세 시청 로그 조회
+   */
+  static async getDetailedWatchLogsByDevice(deviceId: string, startDate?: Date, endDate?: Date, limit = 100) {
+    let sql = `
+      SELECT
+        cl.id,
+        cl.content_id,
+        cl.content_name,
+        cl.action_type,
+        cl.duration,
+        cl.timestamp,
+        s.id as session_id
+      FROM content_logs cl
+      JOIN sessions s ON cl.session_id = s.id
+      WHERE s.device_id = $1
+    `;
+    const params: unknown[] = [deviceId];
+    let paramIndex = 2;
+
+    if (startDate) {
+      sql += ` AND cl.timestamp >= $${paramIndex++}`;
+      params.push(startDate);
+    }
+    if (endDate) {
+      sql += ` AND cl.timestamp <= $${paramIndex++}`;
+      params.push(endDate);
+    }
+
+    sql += ` ORDER BY cl.timestamp DESC LIMIT $${paramIndex}`;
+    params.push(limit);
+
+    return query(sql, params);
+  }
+
+  /**
+   * 모든 기기별 영상 시청 요약
+   */
+  static async getAllDevicesWatchSummary(startDate?: Date, endDate?: Date) {
+    let sql = `
+      SELECT
+        d.id as device_id,
+        d.device_id as device_info,
+        COUNT(DISTINCT cl.content_id) as unique_contents,
+        COUNT(*) as total_views,
+        SUM(CASE WHEN cl.action_type = 'WATCH_END' THEN cl.duration ELSE 0 END) as total_watch_time,
+        MAX(cl.timestamp) as last_activity
+      FROM devices d
+      LEFT JOIN sessions s ON s.device_id = d.id
+      LEFT JOIN content_logs cl ON cl.session_id = s.id AND cl.action_type IN ('SELECT', 'WATCH_END')
+      WHERE 1=1
+    `;
+    const params: unknown[] = [];
+    let paramIndex = 1;
+
+    if (startDate) {
+      sql += ` AND (cl.timestamp >= $${paramIndex++} OR cl.timestamp IS NULL)`;
+      params.push(startDate);
+    }
+    if (endDate) {
+      sql += ` AND (cl.timestamp <= $${paramIndex++} OR cl.timestamp IS NULL)`;
+      params.push(endDate);
+    }
+
+    sql += `
+      GROUP BY d.id, d.device_id
+      ORDER BY last_activity DESC NULLS LAST
+    `;
+
+    return query(sql, params);
+  }
 }

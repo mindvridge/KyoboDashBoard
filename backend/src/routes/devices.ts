@@ -111,6 +111,57 @@ router.get('/active', DeviceController.getActive);
 
 /**
  * @swagger
+ * /devices/watch-summary:
+ *   get:
+ *     summary: 전체 기기별 영상 시청 요약
+ *     description: 모든 기기의 영상 시청 요약 정보를 조회합니다.
+ *     tags: [Devices]
+ *     parameters:
+ *       - in: query
+ *         name: start_date
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: 시작 날짜
+ *       - in: query
+ *         name: end_date
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: 종료 날짜
+ *     responses:
+ *       200:
+ *         description: 기기별 시청 요약
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       device_id:
+ *                         type: string
+ *                       device_info:
+ *                         type: string
+ *                       unique_contents:
+ *                         type: integer
+ *                       total_views:
+ *                         type: integer
+ *                       total_watch_time:
+ *                         type: integer
+ *                       last_activity:
+ *                         type: string
+ *                         format: date-time
+ */
+router.get('/watch-summary', DeviceController.getAllWatchSummary);
+
+/**
+ * @swagger
  * /devices/{id}:
  *   get:
  *     summary: 디바이스 상세 조회
@@ -145,6 +196,129 @@ router.get('/active', DeviceController.getActive);
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.get('/:id', DeviceController.getById);
+
+/**
+ * @swagger
+ * /devices/{id}/watch-history:
+ *   get:
+ *     summary: 기기별 영상 시청 내역
+ *     description: 특정 기기가 시청한 영상 목록과 통계를 조회합니다.
+ *     tags: [Devices]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: 디바이스 ID
+ *       - in: query
+ *         name: start_date
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: 시작 날짜
+ *       - in: query
+ *         name: end_date
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: 종료 날짜
+ *     responses:
+ *       200:
+ *         description: 시청 내역
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       content_id:
+ *                         type: string
+ *                       content_name:
+ *                         type: string
+ *                       view_count:
+ *                         type: integer
+ *                       total_watch_time:
+ *                         type: integer
+ *                       last_watched:
+ *                         type: string
+ *                         format: date-time
+ *                       first_watched:
+ *                         type: string
+ *                         format: date-time
+ */
+router.get('/:id/watch-history', DeviceController.getWatchHistory);
+
+/**
+ * @swagger
+ * /devices/{id}/watch-logs:
+ *   get:
+ *     summary: 기기별 상세 시청 로그
+ *     description: 특정 기기의 상세 시청 로그를 조회합니다.
+ *     tags: [Devices]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: 디바이스 ID
+ *       - in: query
+ *         name: start_date
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: 시작 날짜
+ *       - in: query
+ *         name: end_date
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: 종료 날짜
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 100
+ *         description: 최대 조회 개수
+ *     responses:
+ *       200:
+ *         description: 상세 시청 로그
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       content_id:
+ *                         type: string
+ *                       content_name:
+ *                         type: string
+ *                       action_type:
+ *                         type: string
+ *                       duration:
+ *                         type: integer
+ *                       timestamp:
+ *                         type: string
+ *                         format: date-time
+ */
+router.get('/:id/watch-logs', DeviceController.getWatchLogs);
 
 /**
  * @swagger
