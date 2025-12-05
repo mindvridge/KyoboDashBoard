@@ -5,6 +5,7 @@ import { SpaceModel } from '../models/space';
 import { DashboardStats } from '../types';
 import { cacheGet, cacheSet } from '../config/redis';
 import { logger } from '../utils/logger';
+import { getKoreaTodayRange } from '../utils/timezone';
 
 export class StatsService {
   /**
@@ -15,10 +16,8 @@ export class StatsService {
     const cached = await cacheGet<DashboardStats>(cacheKey);
     if (cached) return cached;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    // 한국 시간(KST) 기준 오늘 날짜 범위
+    const { start: today, end: tomorrow } = getKoreaTodayRange();
 
     const [
       activeSessions,
