@@ -363,28 +363,6 @@ namespace VRLogDashboard
         }
 
         /// <summary>
-        /// 콘텐츠 전환 이벤트를 로그합니다.
-        /// </summary>
-        public async Task<bool> LogContentSwitch(string fromContentId, string toContentId, string toContentName)
-        {
-            if (!HasActiveSession)
-            {
-                LogError("Cannot log: No active session");
-                return false;
-            }
-
-            var request = new ContentSwitchRequest
-            {
-                session_id = currentSessionId,
-                from_content_id = fromContentId,
-                to_content_id = toContentId,
-                to_content_name = toContentName
-            };
-
-            return await QueueRequest("/api/logs/content-switch", JsonUtility.ToJson(request));
-        }
-
-        /// <summary>
         /// 로컬에 저장된 대기 중인 로그 개수를 반환합니다.
         /// </summary>
         public int GetPendingLogCount()
@@ -816,15 +794,6 @@ namespace VRLogDashboard
             public string content_name;
             public string action_type;
             public int duration;
-        }
-
-        [Serializable]
-        private class ContentSwitchRequest
-        {
-            public string session_id;
-            public string from_content_id;
-            public string to_content_id;
-            public string to_content_name;
         }
 
         [Serializable]
