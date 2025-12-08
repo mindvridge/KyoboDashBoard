@@ -45,9 +45,29 @@ namespace VRLogDashboard
         [SerializeField] private float heartbeatInterval = 60f;
         [SerializeField] private bool enableDebugLogs = true;
 
+        [Header("Debug Settings (VR Device)")]
+        [Tooltip("VR 기기에서 디버그 로그를 파일로 저장합니다")]
+        [SerializeField] private bool saveDebugLogsToFile = true;
+        [Tooltip("HTTPS 인증서 검증을 무시합니다 (개발용, 프로덕션에서는 false)")]
+        [SerializeField] private bool bypassCertificateValidation = false;
+
+        [Header("Session Persistence")]
+        [Tooltip("세션을 로컬에 저장하여 앱 재시작 시 복원합니다")]
+        [SerializeField] private bool persistSession = true;
+        [Tooltip("저장된 세션의 유효 시간 (시간 단위, 0이면 무제한)")]
+        [SerializeField] private int sessionExpiryHours = 24;
+
         [Header("Local Storage Settings")]
         [SerializeField] private int maxRetryCount = 3;
         [SerializeField] private float networkCheckInterval = 10f;
+
+        [Header("Network Settings")]
+        [Tooltip("네트워크 요청 타임아웃 시간 (초)")]
+        [SerializeField] private int requestTimeout = 30;
+        [Tooltip("요청 간 지연 시간 (밀리초)")]
+        [SerializeField] private int delayBetweenRequests = 50;
+        [Tooltip("재시도 전 대기 시간 (초)")]
+        [SerializeField] private int retryDelaySeconds = 2;
 
         [Header("Daily Log Archive")]
         [Tooltip("모든 로그를 날짜별로 로컬에 저장합니다")]
@@ -65,6 +85,24 @@ namespace VRLogDashboard
         private string localLogFilePath;
         private string logsDirectoryPath;
         private static readonly TimeSpan KoreanTimeOffset = TimeSpan.FromHours(9);
+
+        // 동시성 제어를 위한 lock 객체
+        private readonly object queueLock = new object();
+        private readonly object processingLock = new object();
+
+        // 재로그인 제어
+        private bool isReloginInProgress = false;
+        private readonly object reloginLock = new object();
+
+        // 디버그 로그 파일
+        private string debugLogFilePath;
+        private StreamWriter debugLogWriter;
+
+        // 세션 로컬 저장 키
+        private const string PREF_AUTH_TOKEN = "VRLogger_AuthToken";
+        private const string PREF_SESSION_ID = "VRLogger_SessionId";
+        private const string PREF_SESSION_TIMESTAMP = "VRLogger_SessionTimestamp";
+        private const string PREF_DEVICE_ID = "VRLogger_DeviceId";
         #endregion
 
         #region Events
@@ -99,15 +137,49 @@ namespace VRLogDashboard
             _instance = this;
             DontDestroyOnLoad(gameObject);
 
+            // Initialize debug log file (VR 기기 디버깅용)
+            if (saveDebugLogsToFile)
+            {
+                InitializeDebugLogFile();
+            }
+
+            // HTTPS 인증서 검증 우회 설정 확인 (PostRequest에서 적용)
+            if (bypassCertificateValidation)
+            {
+                LogDebug("⚠️ Certificate validation will be bypassed (development mode)");
+            }
+
+            // 플랫폼 정보 로깅
+            LogDebug($"=== VRLogger Initialized ===");
+            LogDebug($"Platform: {Application.platform}");
+            LogDebug($"Unity Version: {Application.unityVersion}");
+            LogDebug($"Device Model: {SystemInfo.deviceModel}");
+            LogDebug($"Device Type: {SystemInfo.deviceType}");
+            LogDebug($"OS: {SystemInfo.operatingSystem}");
+            LogDebug($"Internet Reachability: {Application.internetReachability}");
+
             // Auto-generate device ID if not set
             if (string.IsNullOrEmpty(deviceId))
             {
                 deviceId = SystemInfo.deviceUniqueIdentifier;
+                LogDebug($"Auto-generated Device ID: {deviceId}");
+            }
+            else
+            {
+                LogDebug($"Using configured Device ID: {deviceId}");
+            }
+
+            // Validate device ID
+            if (string.IsNullOrEmpty(deviceId) || deviceId == SystemInfo.unsupportedIdentifier)
+            {
+                LogError("⚠️ Device ID is invalid or unsupported! Using fallback.");
+                deviceId = $"fallback_{Guid.NewGuid().ToString()}";
+                LogDebug($"Fallback Device ID: {deviceId}");
             }
 
             // Initialize local log file path
             localLogFilePath = Path.Combine(Application.persistentDataPath, "pending_logs.json");
-            Log($"Local log file path: {localLogFilePath}");
+            LogDebug($"Local log file path: {localLogFilePath}");
 
             // Initialize daily logs directory
             logsDirectoryPath = Path.Combine(Application.persistentDataPath, "logs");
@@ -115,62 +187,217 @@ namespace VRLogDashboard
             {
                 Directory.CreateDirectory(logsDirectoryPath);
             }
-            Log($"Daily logs directory: {logsDirectoryPath}");
+            LogDebug($"Daily logs directory: {logsDirectoryPath}");
+            LogDebug($"Persistent data path: {Application.persistentDataPath}");
+            LogDebug($"=== Initialization Complete ===");
         }
 
         private void Start()
         {
+            LogDebug("=== VRLogger Start ===");
+
             // Load any pending logs from local storage
+            LogDebug("Loading pending logs from local storage...");
             LoadPendingLogsFromLocal();
 
             // Start network monitoring
+            LogDebug("Starting network monitoring...");
             StartNetworkMonitoring();
 
-            if (autoLogin)
-            {
-                _ = AutoLogin();
-            }
+            // 저장된 세션 복원 시도
+            _ = InitializeSessionAsync();
 
             if (dashboardVideoLoader == null)
+            {
                 dashboardVideoLoader = this.GetComponent<DashboardVideoLoader>();
+                LogDebug($"DashboardVideoLoader: {(dashboardVideoLoader != null ? "Found" : "Not Found")}");
+            }
+
+            LogDebug("=== VRLogger Start Complete ===");
+        }
+
+        /// <summary>
+        /// 세션을 초기화합니다. (저장된 세션 복원 또는 새로 로그인)
+        /// </summary>
+        private async Task InitializeSessionAsync()
+        {
+            try
+            {
+                // 1. 저장된 세션 로드 시도
+                bool sessionLoaded = LoadSessionFromLocal();
+
+                if (sessionLoaded)
+                {
+                    LogDebug("Saved session loaded, validating...");
+
+                    // 2. 저장된 세션 유효성 검증
+                    bool isValid = await ValidateSavedSession();
+
+                    if (isValid)
+                    {
+                        // 3. 세션이 유효하면 그대로 사용
+                        LogDebug("✅ Using saved session");
+                        OnLoginComplete?.Invoke(true);
+                        OnSessionStarted?.Invoke(currentSessionId);
+
+                        // 하트비트 시작
+                        StartHeartbeat();
+
+                        // 대기 중인 로그 재전송
+                        _ = RetryPendingLogs();
+
+                        return;
+                    }
+                    else
+                    {
+                        // 4. 세션이 유효하지 않으면 삭제
+                        LogDebug("Saved session is invalid, clearing...");
+                        ClearSavedSession();
+                        authToken = null;
+                        currentSessionId = null;
+                    }
+                }
+
+                // 5. 저장된 세션이 없거나 유효하지 않으면 새로 로그인
+                if (autoLogin)
+                {
+                    LogDebug("Starting new login process...");
+                    await AutoLogin();
+                }
+                else
+                {
+                    LogDebug("AutoLogin disabled");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Session initialization failed: {ex.Message}");
+
+                // 실패 시 새로 로그인 시도
+                if (autoLogin)
+                {
+                    LogDebug("Retrying with new login...");
+                    await AutoLogin();
+                }
+            }
         }
 
         private void OnApplicationQuit()
         {
-            // Save any pending logs to local storage before quit
+            // Save any pending logs and session to local storage before quit
             SavePendingLogsToLocal();
+            SaveSessionToLocal();
 
-            if (HasActiveSession)
-            {
-                // Synchronous session end on quit
-                StartCoroutine(EndSessionCoroutine(0));
-            }
+            // 앱 종료 시에는 세션을 종료하지 않고 유지 (다음 실행 시 재사용)
+            LogDebug("App quitting, session saved for next startup");
         }
 
         private void OnApplicationPause(bool pauseStatus)
         {
             if (pauseStatus)
             {
-                // App going to background - save pending logs
+                // App going to background - save pending logs and session
                 SavePendingLogsToLocal();
+                SaveSessionToLocal();
 
-                if (HasActiveSession)
-                {
-                    _ = LogSessionEnd();
-                }
+                // 세션 종료하지 않고 유지 (백그라운드에서 복귀 시 재사용)
+                LogDebug("App paused, session saved to local");
             }
             else
             {
-                // App resuming - try to resend pending logs
-                if (IsLoggedIn)
-                {
-                    _ = RetryPendingLogs();
+                // App resuming - validate and restore session
+                LogDebug("App resumed");
+                _ = ResumeSessionAsync();
+            }
+        }
 
-                    if (!HasActiveSession)
+        /// <summary>
+        /// 앱 복귀 시 세션을 복원합니다.
+        /// </summary>
+        private async Task ResumeSessionAsync()
+        {
+            try
+            {
+                if (IsLoggedIn && HasActiveSession)
+                {
+                    // 세션이 있으면 유효성 검증
+                    LogDebug("Validating existing session...");
+                    bool isValid = await ValidateSavedSession();
+
+                    if (isValid)
                     {
-                        _ = StartSession();
+                        LogDebug("Session is still valid ✅");
+                        _ = RetryPendingLogs();
+                        return;
+                    }
+                    else
+                    {
+                        LogDebug("Session is invalid, restarting...");
                     }
                 }
+
+                // 세션이 없거나 유효하지 않으면 재시작
+                if (IsLoggedIn)
+                {
+                    if (!HasActiveSession)
+                    {
+                        await StartSession();
+                    }
+                    _ = RetryPendingLogs();
+                }
+                else if (autoLogin)
+                {
+                    await AutoLogin();
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Session resume failed: {ex.Message}");
+            }
+        }
+
+        private void OnDestroy()
+        {
+            // 리소스 정리 및 메모리 누수 방지
+            try
+            {
+                // 대기 중인 로그 저장
+                SavePendingLogsToLocal();
+
+                // 코루틴 정리
+                if (heartbeatCoroutine != null)
+                {
+                    StopCoroutine(heartbeatCoroutine);
+                    heartbeatCoroutine = null;
+                }
+
+                if (networkCheckCoroutine != null)
+                {
+                    StopCoroutine(networkCheckCoroutine);
+                    networkCheckCoroutine = null;
+                }
+
+                // 이벤트 구독 해제 (메모리 누수 방지)
+                OnLoginComplete = null;
+                OnSessionStarted = null;
+                OnSessionEnded = null;
+                OnError = null;
+                OnPendingLogsChanged = null;
+
+                Log("VRLogger destroyed and resources cleaned up");
+
+                // 디버그 로그 파일 닫기
+                if (debugLogWriter != null)
+                {
+                    LogToFile("=== VRLogger Debug Log Ended ===");
+                    debugLogWriter.Close();
+                    debugLogWriter.Dispose();
+                    debugLogWriter = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[VRLogger] Error during cleanup: {ex.Message}");
             }
         }
         #endregion
@@ -192,43 +419,62 @@ namespace VRLogDashboard
         {
             try
             {
+                LogDebug($"=== Starting AutoLogin ===");
+                LogDebug($"Device ID: {deviceId}");
+                LogDebug($"Server URL: {serverUrl}");
+                LogDebug($"Network Reachability: {Application.internetReachability}");
+
                 var request = new DeviceRegistrationRequest
                 {
                     device_id = deviceId,
                 };
 
+                var requestJson = JsonUtility.ToJson(request);
+                LogDebug($"Request JSON: {requestJson}");
+
                 var response = await PostRequest<DeviceRegistrationResponse>(
                     "/api/devices/register",
-                    JsonUtility.ToJson(request),
+                    requestJson,
                     false
                 );
 
                 if (response != null && response.success)
                 {
                     authToken = response.token;
+                    LogDebug($"Auth token received: {(string.IsNullOrEmpty(authToken) ? "null" : authToken.Substring(0, Math.Min(10, authToken.Length)))}...");
 
                     Log($"Device registered: {response.device.device_id}, New: {response.is_new_device}");
 
                     OnLoginComplete?.Invoke(true);
 
                     // Start session automatically
+                    LogDebug("Starting session...");
                     await StartSession();
 
+                    // 세션 로컬 저장
+                    SaveSessionToLocal();
+
                     // Start heartbeat
+                    LogDebug("Starting heartbeat...");
                     StartHeartbeat();
 
                     // Try to send any pending logs after successful login
+                    LogDebug("Retrying pending logs...");
                     _ = RetryPendingLogs();
 
+                    LogDebug("=== AutoLogin Successful ===");
                     return true;
                 }
 
+                LogError("AutoLogin failed: Response was null or not successful");
+                LogDebug($"Response: {(response == null ? "null" : $"success={response.success}")}");
                 OnLoginComplete?.Invoke(false);
                 return false;
             }
             catch (Exception ex)
             {
-                LogError($"AutoLogin failed: {ex.Message}");
+                LogError($"AutoLogin exception: {ex.GetType().Name}: {ex.Message}");
+                LogDebug($"Stack trace: {ex.StackTrace}");
                 OnLoginComplete?.Invoke(false);
                 return false;
             }
@@ -247,6 +493,8 @@ namespace VRLogDashboard
 
             try
             {
+                LogDebug("=== Starting Session ===");
+
                 var response = await PostRequest<SessionStartResponse>(
                     "/api/sessions/start",
                     "{}",
@@ -257,15 +505,22 @@ namespace VRLogDashboard
                 {
                     currentSessionId = response.session_id;
                     Log($"Session started: {currentSessionId}");
+                    LogDebug($"Session start time: {response.start_time}");
+
+                    // 세션 로컬 저장
+                    SaveSessionToLocal();
+
                     OnSessionStarted?.Invoke(currentSessionId);
                     return true;
                 }
 
+                LogError("StartSession failed: Response was null or not successful");
                 return false;
             }
             catch (Exception ex)
             {
-                LogError($"StartSession failed: {ex.Message}");
+                LogError($"StartSession exception: {ex.GetType().Name}: {ex.Message}");
+                LogDebug($"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -275,9 +530,22 @@ namespace VRLogDashboard
         /// </summary>
         public void LogContentSelect(int contentId)
         {
+            LogDebug($"=== LogContentSelect Called ===");
+            LogDebug($"Content ID: {contentId}");
+
             currentVideoID = contentId;
-            // Fire and forget, but handle errors
-            _ = LogContentSelectAsync(contentId.ToString(), "");
+            var videoInfo = GetVideoFileNameByID();
+
+            if (videoInfo != null)
+            {
+                LogDebug($"Video Info Found: {videoInfo.title}");
+                _ = LogContentSelectAsync(contentId.ToString(), videoInfo.title);
+            }
+            else
+            {
+                LogDebug($"Video Info Not Found, using contentId as name");
+                _ = LogContentSelectAsync(contentId.ToString(), contentId.ToString());
+            }
         }
 
         /// <summary>
@@ -285,6 +553,12 @@ namespace VRLogDashboard
         /// </summary>
         public async Task<bool> LogContentSelectAsync(string contentId, string contentName, Dictionary<string, object> metadata = null)
         {
+            LogDebug($"=== LogContentSelectAsync ===");
+            LogDebug($"Content ID: {contentId}, Name: {contentName}");
+            LogDebug($"Has Active Session: {HasActiveSession}");
+            LogDebug($"Current Session ID: {currentSessionId}");
+            LogDebug($"Is Logged In: {IsLoggedIn}");
+
             if (!HasActiveSession)
             {
                 LogError("Cannot log: No active session");
@@ -298,7 +572,10 @@ namespace VRLogDashboard
                 content_name = contentName
             };
 
-            return await QueueRequest("/api/logs/content-select", JsonUtility.ToJson(request));
+            var requestJson = JsonUtility.ToJson(request);
+            LogDebug($"Request JSON: {requestJson}");
+
+            return await QueueRequest("/api/logs/content-select", requestJson);
         }
 
         /// <summary>
@@ -382,7 +659,15 @@ namespace VRLogDashboard
         public int GetPendingLogCount()
         {
             var localLogs = LoadLocalLogFile();
-            return pendingRequests.Count + localLogs.requests.Count;
+
+            // 동시성 제어: 큐 카운트를 안전하게 읽기
+            int queueCount = 0;
+            lock (queueLock)
+            {
+                queueCount = pendingRequests.Count;
+            }
+
+            return queueCount + localLogs.requests.Count;
         }
 
         /// <summary>
@@ -397,7 +682,15 @@ namespace VRLogDashboard
             }
 
             await RetryPendingLogs();
-            return pendingRequests.Count == 0;
+
+            // 동시성 제어: 큐 상태를 안전하게 확인
+            bool isEmpty = false;
+            lock (queueLock)
+            {
+                isEmpty = pendingRequests.Count == 0;
+            }
+
+            return isEmpty;
         }
 
         /// <summary>
@@ -458,6 +751,55 @@ namespace VRLogDashboard
             return GetDailyLogFilePath(koreanTime);
         }
 
+        /// <summary>
+        /// 디버그 로그 파일 경로를 반환합니다. (VR 기기 디버깅용)
+        /// </summary>
+        public string GetDebugLogFilePath()
+        {
+            return debugLogFilePath;
+        }
+
+        /// <summary>
+        /// 현재 세션을 수동으로 로컬에 저장합니다.
+        /// </summary>
+        public void SaveSession()
+        {
+            SaveSessionToLocal();
+        }
+
+        /// <summary>
+        /// 저장된 세션을 수동으로 삭제합니다.
+        /// </summary>
+        public void ClearSession()
+        {
+            ClearSavedSession();
+        }
+
+        /// <summary>
+        /// 저장된 세션이 있는지 확인합니다.
+        /// </summary>
+        public bool HasSavedSession()
+        {
+            return PlayerPrefs.HasKey(PREF_AUTH_TOKEN) && PlayerPrefs.HasKey(PREF_SESSION_ID);
+        }
+
+        /// <summary>
+        /// 저장된 세션의 나이(시간)를 반환합니다.
+        /// </summary>
+        public TimeSpan? GetSavedSessionAge()
+        {
+            if (!PlayerPrefs.HasKey(PREF_SESSION_TIMESTAMP))
+                return null;
+
+            string timestampStr = PlayerPrefs.GetString(PREF_SESSION_TIMESTAMP);
+            if (DateTime.TryParse(timestampStr, out DateTime savedTime))
+            {
+                return DateTime.UtcNow - savedTime;
+            }
+
+            return null;
+        }
+
         #endregion
 
         #region Private Methods
@@ -484,6 +826,9 @@ namespace VRLogDashboard
 
         private async Task<bool> QueueRequest(string endpoint, string jsonBody)
         {
+            LogDebug($"=== QueueRequest ===");
+            LogDebug($"Endpoint: {endpoint}");
+
             var koreanTime = DateTime.UtcNow + KoreanTimeOffset;
             var logRequest = new LogRequest
             {
@@ -497,14 +842,38 @@ namespace VRLogDashboard
             if (enableDailyLogArchive)
             {
                 SaveToDailyLog(logRequest, koreanTime);
+                LogDebug("Saved to daily log archive");
             }
 
-            pendingRequests.Enqueue(logRequest);
+            bool shouldProcessQueue = false;
+            int queueSize = 0;
+
+            // 동시성 제어: 큐에 안전하게 추가
+            lock (queueLock)
+            {
+                pendingRequests.Enqueue(logRequest);
+                queueSize = pendingRequests.Count;
+
+                // isProcessingQueue 체크도 lock 내부에서 수행
+                lock (processingLock)
+                {
+                    shouldProcessQueue = !isProcessingQueue;
+                }
+            }
+
+            LogDebug($"Added to queue. Queue size: {queueSize}, Should process: {shouldProcessQueue}");
+
             OnPendingLogsChanged?.Invoke(GetPendingLogCount());
 
-            if (!isProcessingQueue)
+            // lock 외부에서 ProcessQueue 호출 (데드락 방지)
+            if (shouldProcessQueue)
             {
+                LogDebug("Starting ProcessQueue...");
                 await ProcessQueue();
+            }
+            else
+            {
+                LogDebug("Queue is already being processed");
             }
 
             return true;
@@ -512,111 +881,193 @@ namespace VRLogDashboard
 
         private async Task ProcessQueue()
         {
-            isProcessingQueue = true;
-            var failedRequests = new List<LogRequest>();
-
-            while (pendingRequests.Count > 0)
+            // 동시성 제어: 이미 처리 중인지 확인
+            lock (processingLock)
             {
-                var request = pendingRequests.Dequeue();
-
-                try
+                if (isProcessingQueue)
                 {
-                    var response = await PostRequest<BaseResponse>(request.endpoint, request.body, true);
-                    if (response != null && response.success)
-                    {
-                        Log($"Log sent successfully: {request.endpoint}");
-                    }
-                    else
-                    {
-                        throw new Exception("Server returned failure response");
-                    }
+                    Log("Queue processing already in progress, skipping");
+                    return;
                 }
-                catch (SessionNotActiveException)
-                {
-                    // 세션이 만료됨 - 재시작 시도
-                    LogError("Session not found: Session is not active (HTTP 400)");
-                    Log("Attempting to restart session...");
-
-                    bool sessionRestarted = await StartSession();
-                    if (sessionRestarted)
-                    {
-                        // 세션 ID를 새로운 것으로 업데이트하고 재시도
-                        request.body = UpdateSessionIdInBody(request.body, currentSessionId);
-                        request.retryCount = 0;
-                        failedRequests.Add(request);
-                        Log("Session restarted, re-queuing request");
-                    }
-                    else
-                    {
-                        // 세션 재시작 실패 - 로컬에 저장
-                        SaveFailedLogToLocal(request);
-                        LogError("Failed to restart session, saved log locally");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogError($"Failed to process request: {ex.Message}");
-
-                    request.retryCount++;
-                    if (request.retryCount < maxRetryCount)
-                    {
-                        failedRequests.Add(request);
-                        Log($"Request queued for retry ({request.retryCount}/{maxRetryCount})");
-                    }
-                    else
-                    {
-                        // Max retries exceeded - save to local storage
-                        SaveFailedLogToLocal(request);
-                        LogError($"Request failed after {maxRetryCount} retries, saved locally");
-                    }
-                }
-
-                // Small delay between requests
-                await Task.Delay(50);
+                isProcessingQueue = true;
             }
 
-            // Re-queue failed requests for retry
-            foreach (var failed in failedRequests)
-            {
-                pendingRequests.Enqueue(failed);
-            }
-
-            isProcessingQueue = false;
-            OnPendingLogsChanged?.Invoke(GetPendingLogCount());
-
-            // If there are still pending requests, retry after delay
-            if (pendingRequests.Count > 0 && isNetworkAvailable)
-            {
-                await Task.Delay(2000); // Wait 2 seconds before retry
-                await ProcessQueue();
-            }
-        }
-
-        private string UpdateSessionIdInBody(string jsonBody, string newSessionId)
-        {
-            // JSON body에서 session_id를 새로운 것으로 교체
             try
             {
-                // 간단한 문자열 치환 (JSON 파싱 없이)
-                var pattern = "\"session_id\":\"[^\"]*\"";
-                var replacement = $"\"session_id\":\"{newSessionId}\"";
-                return System.Text.RegularExpressions.Regex.Replace(jsonBody, pattern, replacement);
-            }
-            catch
-            {
-                return jsonBody;
-            }
-        }
+                var failedRequests = new List<LogRequest>();
 
-        // 세션 비활성 예외
-        private class SessionNotActiveException : Exception
-        {
-            public SessionNotActiveException(string message) : base(message) { }
+                while (true)
+                {
+                    LogRequest request = null;
+
+                    // 동시성 제어: 큐에서 안전하게 가져오기
+                    lock (queueLock)
+                    {
+                        if (pendingRequests.Count == 0)
+                            break;
+
+                        request = pendingRequests.Dequeue();
+                    }
+
+                    try
+                    {
+                        var response = await PostRequest<BaseResponse>(request.endpoint, request.body, true);
+                        if (response != null && response.success)
+                        {
+                            Log($"Log sent successfully: {request.endpoint}");
+                        }
+                        else
+                        {
+                            throw new Exception("Server returned failure response");
+                        }
+                    }
+                    catch (SessionNotFoundException sessionEx)
+                    {
+                        // 세션 없음 (404) - 세션 재시작 시도
+                        LogError($"Session not found: {sessionEx.Message}");
+                        LogDebug("Attempting to restart session...");
+
+                        // 현재 세션 ID 초기화
+                        currentSessionId = null;
+
+                        // 로그인 상태 확인
+                        if (!IsLoggedIn)
+                        {
+                            LogError("Not logged in, cannot restart session. Attempting relogin...");
+
+                            // 재로그인 시도
+                            bool reloginSuccess = await TryReloginAsync();
+
+                            if (reloginSuccess)
+                            {
+                                Log("Relogin successful, session will be restarted automatically");
+                                failedRequests.Add(request);
+                            }
+                            else
+                            {
+                                LogError("Relogin failed, saving log to local storage");
+                                SaveFailedLogToLocal(request);
+                                Log("Stopping queue processing due to login failure");
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            // 로그인은 되어 있으므로 세션만 재시작
+                            bool sessionStarted = await StartSession();
+
+                            if (sessionStarted)
+                            {
+                                Log("Session restarted successfully, retrying failed request");
+                                failedRequests.Add(request);
+                            }
+                            else
+                            {
+                                LogError("Failed to restart session, saving log to local storage");
+                                SaveFailedLogToLocal(request);
+                                Log("Stopping queue processing due to session restart failure");
+                                break;
+                            }
+                        }
+                    }
+                    catch (AuthenticationException authEx)
+                    {
+                        // 인증 실패 (401/403) - 재로그인 시도
+                        LogError($"Authentication failed: {authEx.Message}");
+
+                        // 재로그인 시도
+                        bool reloginSuccess = await TryReloginAsync();
+
+                        if (reloginSuccess)
+                        {
+                            // 재로그인 성공 - 현재 요청을 다시 큐에 추가 (재시도 카운트는 증가시키지 않음)
+                            Log("Relogin successful, retrying failed request");
+                            failedRequests.Add(request);
+                        }
+                        else
+                        {
+                            // 재로그인 실패 - 로컬에 저장
+                            LogError("Relogin failed, saving log to local storage");
+                            SaveFailedLogToLocal(request);
+
+                            // 더 이상 처리하지 않고 중단 (재로그인이 실패하면 다른 요청도 실패할 것임)
+                            Log("Stopping queue processing due to authentication failure");
+                            break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError($"Failed to process request: {ex.Message}");
+
+                        request.retryCount++;
+                        if (request.retryCount < maxRetryCount)
+                        {
+                            failedRequests.Add(request);
+                            Log($"Request queued for retry ({request.retryCount}/{maxRetryCount})");
+                        }
+                        else
+                        {
+                            // Max retries exceeded - save to local storage
+                            SaveFailedLogToLocal(request);
+                            LogError($"Request failed after {maxRetryCount} retries, saved locally");
+                        }
+                    }
+
+                    // 요청 간 지연 (서버 부하 방지)
+                    await Task.Delay(delayBetweenRequests);
+                }
+
+                // 동시성 제어: 실패한 요청을 안전하게 다시 큐에 추가
+                if (failedRequests.Count > 0)
+                {
+                    lock (queueLock)
+                    {
+                        foreach (var failed in failedRequests)
+                        {
+                            pendingRequests.Enqueue(failed);
+                        }
+                    }
+                }
+
+                OnPendingLogsChanged?.Invoke(GetPendingLogCount());
+
+                // 여전히 대기 중인 요청이 있으면 재시도
+                bool hasPendingRequests = false;
+                lock (queueLock)
+                {
+                    hasPendingRequests = pendingRequests.Count > 0;
+                }
+
+                if (hasPendingRequests && isNetworkAvailable)
+                {
+                    await Task.Delay(retryDelaySeconds * 1000); // 재시도 전 대기
+
+                    // 재귀 호출 전에 플래그 해제
+                    lock (processingLock)
+                    {
+                        isProcessingQueue = false;
+                    }
+
+                    await ProcessQueue();
+                    return; // 재귀 호출 후 종료
+                }
+            }
+            finally
+            {
+                // 예외 발생 시에도 플래그 해제 보장
+                lock (processingLock)
+                {
+                    isProcessingQueue = false;
+                }
+            }
         }
 
         private async Task<T> PostRequest<T>(string endpoint, string jsonBody, bool authenticated) where T : class
         {
             var url = serverUrl + endpoint;
+
+            LogDebug($"POST Request to: {url}");
+            LogDebug($"Authenticated: {authenticated}, HasToken: {!string.IsNullOrEmpty(authToken)}");
 
             using (var request = new UnityWebRequest(url, "POST"))
             {
@@ -624,39 +1075,106 @@ namespace VRLogDashboard
                 request.uploadHandler = new UploadHandlerRaw(bodyRaw);
                 request.downloadHandler = new DownloadHandlerBuffer();
                 request.SetRequestHeader("Content-Type", "application/json");
+                request.timeout = requestTimeout; // 타임아웃 설정
+
+                // HTTPS 인증서 검증 우회 (개발용)
+                if (bypassCertificateValidation)
+                {
+                    request.certificateHandler = new AcceptAllCertificatesHandler();
+                }
 
                 if (authenticated && !string.IsNullOrEmpty(authToken))
                 {
                     request.SetRequestHeader("Authorization", $"Bearer {authToken}");
                 }
 
+                LogDebug($"Sending request...");
                 var operation = request.SendWebRequest();
 
+                // Unity 메인 스레드 안전성을 위한 타임아웃 처리
+                float elapsedTime = 0f;
                 while (!operation.isDone)
                 {
-                    await Task.Yield();
+                    // Task.Delay를 사용하여 메인 스레드 안전성 확보
+                    await Task.Delay(10);
+                    elapsedTime += 0.01f;
+
+                    // 추가 타임아웃 체크
+                    if (elapsedTime >= requestTimeout)
+                    {
+                        request.Abort();
+                        LogError($"Request timeout after {requestTimeout} seconds to {url}");
+                        throw new Exception($"Request timeout after {requestTimeout} seconds");
+                    }
                 }
 
-                Log($"Request completed. Status: {request.result}, ResponseCode: {request.responseCode}");
+                LogDebug($"Request completed. Status: {request.result}, ResponseCode: {request.responseCode}");
 
                 if (request.result == UnityWebRequest.Result.Success)
                 {
-                    var response = JsonUtility.FromJson<T>(request.downloadHandler.text);
-                    return response;
+                    // 응답 데이터 검증
+                    if (string.IsNullOrEmpty(request.downloadHandler.text))
+                    {
+                        LogError("Empty response from server");
+                        throw new Exception("Empty response from server");
+                    }
+
+                    try
+                    {
+                        var response = JsonUtility.FromJson<T>(request.downloadHandler.text);
+
+                        // null 체크
+                        if (response == null)
+                        {
+                            LogError($"Failed to parse response JSON: {request.downloadHandler.text}");
+                            throw new Exception("Failed to parse response JSON");
+                        }
+
+                        return response;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError($"JSON parsing error: {ex.Message}");
+                        throw;
+                    }
                 }
                 else
                 {
-                    var responseText = request.downloadHandler.text;
+                    // HTTP 상태 코드 체크
+                    long statusCode = request.responseCode;
+                    string responseBody = request.downloadHandler?.text ?? "";
 
-                    // 400 에러이고 "Session is not active" 메시지인 경우
-                    if (request.responseCode == 400 &&
-                        (responseText.Contains("Session is not active") || responseText.Contains("Session not found")))
+                    // 401 Unauthorized 또는 403 Forbidden - 세션 만료 또는 인증 실패
+                    if (statusCode == 401 || statusCode == 403)
                     {
-                        LogError($"Session is not active (HTTP 400)");
-                        throw new SessionNotActiveException("Session is not active");
+                        var authError = $"Authentication failed (HTTP {statusCode})";
+                        LogError(authError);
+                        throw new AuthenticationException(statusCode, authError);
                     }
 
-                    LogError($"Request failed: {request.error} - {responseText}");
+                    // 400 Bad Request - 세션이 비활성 상태
+                    if (statusCode == 400 && responseBody.Contains("Session is not active"))
+                    {
+                        var sessionError = $"Session is not active (HTTP 400)";
+                        LogError(sessionError);
+                        throw new SessionNotFoundException(sessionError);
+                    }
+
+                    // 404 Not Found - 세션이 존재하지 않음
+                    if (statusCode == 404 && responseBody.Contains("Session not found"))
+                    {
+                        var sessionError = $"Session not found (HTTP 404)";
+                        LogError(sessionError);
+                        throw new SessionNotFoundException(sessionError);
+                    }
+
+                    // 기타 에러
+                    var errorMessage = $"Request failed (HTTP {statusCode}): {request.error}";
+                    if (!string.IsNullOrEmpty(responseBody))
+                    {
+                        errorMessage += $" - {responseBody}";
+                    }
+                    LogError(errorMessage);
                     throw new Exception(request.error);
                 }
             }
@@ -679,7 +1197,133 @@ namespace VRLogDashboard
 
                 if (IsLoggedIn)
                 {
-                    _ = PostRequest<BaseResponse>("/api/devices/heartbeat", "{}", true);
+                    // 비동기 작업을 제대로 처리하여 예외를 캐치
+                    var task = SendHeartbeatAsync();
+
+                    // Task 완료 대기
+                    while (!task.IsCompleted)
+                    {
+                        yield return null;
+                    }
+
+                    // 예외 처리
+                    if (task.Exception != null)
+                    {
+                        var innerException = task.Exception.InnerException;
+
+                        // 인증 실패인지 확인
+                        if (innerException is AuthenticationException)
+                        {
+                            LogError("Heartbeat authentication failed, attempting relogin...");
+
+                            // 재로그인 시도
+                            var reloginTask = TryReloginAsync();
+                            while (!reloginTask.IsCompleted)
+                            {
+                                yield return null;
+                            }
+
+                            if (!reloginTask.Result)
+                            {
+                                LogError("Heartbeat relogin failed, stopping heartbeat");
+                                yield break; // 하트비트 중단
+                            }
+                        }
+                        else
+                        {
+                            LogError($"Heartbeat failed: {innerException?.Message ?? task.Exception.Message}");
+                        }
+                    }
+                    else if (task.IsFaulted)
+                    {
+                        LogError("Heartbeat task faulted");
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// 하트비트를 서버에 전송합니다. (예외 처리 포함)
+        /// </summary>
+        private async Task SendHeartbeatAsync()
+        {
+            try
+            {
+                var response = await PostRequest<BaseResponse>("/api/devices/heartbeat", "{}", true);
+
+                if (response != null && response.success)
+                {
+                    Log("Heartbeat sent successfully");
+                }
+                else
+                {
+                    LogError("Heartbeat response indicated failure");
+                }
+            }
+            catch (Exception ex)
+            {
+                // 예외를 상위로 전파하여 HeartbeatCoroutine에서 처리
+                LogError($"Heartbeat exception: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 세션 만료 시 자동으로 재로그인을 시도합니다.
+        /// </summary>
+        /// <returns>재로그인 성공 여부</returns>
+        private async Task<bool> TryReloginAsync()
+        {
+            // 동시성 제어: 이미 재로그인 중이면 대기
+            lock (reloginLock)
+            {
+                if (isReloginInProgress)
+                {
+                    Log("Relogin already in progress, waiting...");
+                    return false; // 다른 스레드가 재로그인 중
+                }
+                isReloginInProgress = true;
+            }
+
+            try
+            {
+                Log("Session expired or authentication failed. Attempting automatic relogin...");
+
+                // 기존 토큰 및 세션 초기화
+                authToken = null;
+                currentSessionId = null;
+
+                // 하트비트 중지
+                if (heartbeatCoroutine != null)
+                {
+                    StopCoroutine(heartbeatCoroutine);
+                    heartbeatCoroutine = null;
+                }
+
+                // 자동 로그인 시도
+                bool loginSuccess = await AutoLogin(deviceId);
+
+                if (loginSuccess)
+                {
+                    Log("Automatic relogin successful!");
+                    return true;
+                }
+                else
+                {
+                    LogError("Automatic relogin failed");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Relogin exception: {ex.Message}");
+                return false;
+            }
+            finally
+            {
+                lock (reloginLock)
+                {
+                    isReloginInProgress = false;
                 }
             }
         }
@@ -713,12 +1357,261 @@ namespace VRLogDashboard
             {
                 Debug.Log($"[VRLogger] {message}");
             }
+            LogToFile($"[INFO] {message}");
         }
 
         private void LogError(string message)
         {
             Debug.LogError($"[VRLogger] {message}");
             OnError?.Invoke(message);
+            LogToFile($"[ERROR] {message}");
+        }
+
+        /// <summary>
+        /// 항상 기록되는 디버그 로그 (VR 기기 디버깅용)
+        /// </summary>
+        private void LogDebug(string message)
+        {
+            Debug.Log($"[VRLogger] {message}");
+            LogToFile($"[DEBUG] {message}");
+        }
+
+        #endregion
+
+        #region Session Persistence
+
+        /// <summary>
+        /// 세션 정보를 로컬에 저장합니다.
+        /// </summary>
+        private void SaveSessionToLocal()
+        {
+            if (!persistSession) return;
+
+            try
+            {
+                LogDebug("=== Saving Session to Local ===");
+
+                // 인증 토큰 저장
+                if (!string.IsNullOrEmpty(authToken))
+                {
+                    PlayerPrefs.SetString(PREF_AUTH_TOKEN, authToken);
+                    LogDebug($"Saved auth token: {authToken.Substring(0, Math.Min(10, authToken.Length))}...");
+                }
+
+                // 세션 ID 저장
+                if (!string.IsNullOrEmpty(currentSessionId))
+                {
+                    PlayerPrefs.SetString(PREF_SESSION_ID, currentSessionId);
+                    LogDebug($"Saved session ID: {currentSessionId}");
+                }
+
+                // 디바이스 ID 저장
+                if (!string.IsNullOrEmpty(deviceId))
+                {
+                    PlayerPrefs.SetString(PREF_DEVICE_ID, deviceId);
+                }
+
+                // 세션 저장 시간 기록 (UTC 기준)
+                PlayerPrefs.SetString(PREF_SESSION_TIMESTAMP, DateTime.UtcNow.ToString("o"));
+
+                PlayerPrefs.Save();
+                LogDebug("Session saved successfully");
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to save session to local: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 로컬에서 세션 정보를 로드합니다.
+        /// </summary>
+        /// <returns>세션 로드 성공 여부</returns>
+        private bool LoadSessionFromLocal()
+        {
+            if (!persistSession)
+            {
+                LogDebug("Session persistence is disabled");
+                return false;
+            }
+
+            try
+            {
+                LogDebug("=== Loading Session from Local ===");
+
+                // 저장된 세션이 있는지 확인
+                if (!PlayerPrefs.HasKey(PREF_AUTH_TOKEN) || !PlayerPrefs.HasKey(PREF_SESSION_ID))
+                {
+                    LogDebug("No saved session found");
+                    return false;
+                }
+
+                // 세션 만료 시간 체크
+                if (PlayerPrefs.HasKey(PREF_SESSION_TIMESTAMP) && sessionExpiryHours > 0)
+                {
+                    string timestampStr = PlayerPrefs.GetString(PREF_SESSION_TIMESTAMP);
+                    if (DateTime.TryParse(timestampStr, out DateTime savedTime))
+                    {
+                        var elapsed = DateTime.UtcNow - savedTime;
+                        LogDebug($"Session age: {elapsed.TotalHours:F2} hours");
+
+                        if (elapsed.TotalHours > sessionExpiryHours)
+                        {
+                            LogDebug($"Session expired (older than {sessionExpiryHours} hours)");
+                            ClearSavedSession();
+                            return false;
+                        }
+                    }
+                }
+
+                // 세션 정보 복원
+                authToken = PlayerPrefs.GetString(PREF_AUTH_TOKEN);
+                currentSessionId = PlayerPrefs.GetString(PREF_SESSION_ID);
+
+                // 디바이스 ID도 복원 (있으면)
+                if (PlayerPrefs.HasKey(PREF_DEVICE_ID))
+                {
+                    string savedDeviceId = PlayerPrefs.GetString(PREF_DEVICE_ID);
+                    if (!string.IsNullOrEmpty(savedDeviceId))
+                    {
+                        deviceId = savedDeviceId;
+                    }
+                }
+
+                LogDebug($"Loaded auth token: {(string.IsNullOrEmpty(authToken) ? "null" : authToken.Substring(0, Math.Min(10, authToken.Length)))}...");
+                LogDebug($"Loaded session ID: {currentSessionId}");
+                LogDebug($"Loaded device ID: {deviceId}");
+                LogDebug("Session loaded successfully");
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to load session from local: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 저장된 세션 정보를 삭제합니다.
+        /// </summary>
+        private void ClearSavedSession()
+        {
+            try
+            {
+                LogDebug("Clearing saved session");
+                PlayerPrefs.DeleteKey(PREF_AUTH_TOKEN);
+                PlayerPrefs.DeleteKey(PREF_SESSION_ID);
+                PlayerPrefs.DeleteKey(PREF_SESSION_TIMESTAMP);
+                // DeviceID는 유지 (재사용 가능)
+                PlayerPrefs.Save();
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to clear saved session: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 저장된 세션이 유효한지 서버에 확인합니다.
+        /// </summary>
+        private async Task<bool> ValidateSavedSession()
+        {
+            if (!IsLoggedIn || !HasActiveSession)
+            {
+                LogDebug("Cannot validate session: Not logged in or no active session");
+                return false;
+            }
+
+            try
+            {
+                LogDebug("=== Validating Saved Session ===");
+                LogDebug($"Session ID: {currentSessionId}");
+
+                // 하트비트를 통해 세션 유효성 확인
+                var response = await PostRequest<BaseResponse>("/api/devices/heartbeat", "{}", true);
+
+                if (response != null && response.success)
+                {
+                    LogDebug("Saved session is valid ✅");
+                    return true;
+                }
+                else
+                {
+                    LogDebug("Saved session is invalid ❌");
+                    return false;
+                }
+            }
+            catch (SessionNotFoundException)
+            {
+                LogDebug("Saved session not found on server ❌");
+                return false;
+            }
+            catch (AuthenticationException)
+            {
+                LogDebug("Saved session authentication failed ❌");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogError($"Session validation error: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 로그를 파일에 저장 (VR 기기에서 확인용)
+        /// </summary>
+        private void LogToFile(string message)
+        {
+            if (!saveDebugLogsToFile || debugLogWriter == null) return;
+
+            try
+            {
+                var timestamp = DateTime.UtcNow.Add(KoreanTimeOffset).ToString("yyyy-MM-dd HH:mm:ss.fff");
+                debugLogWriter?.WriteLine($"[{timestamp}] {message}");
+                debugLogWriter?.Flush(); // 즉시 파일에 쓰기
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[VRLogger] Failed to write to debug log file: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 디버그 로그 파일 초기화
+        /// </summary>
+        private void InitializeDebugLogFile()
+        {
+            try
+            {
+                debugLogFilePath = Path.Combine(Application.persistentDataPath, "vrlogger_debug.log");
+
+                // 파일이 너무 크면 백업하고 새로 시작
+                if (File.Exists(debugLogFilePath))
+                {
+                    var fileInfo = new FileInfo(debugLogFilePath);
+                    if (fileInfo.Length > 5 * 1024 * 1024) // 5MB 이상
+                    {
+                        var backupPath = Path.Combine(Application.persistentDataPath, "vrlogger_debug_old.log");
+                        if (File.Exists(backupPath))
+                        {
+                            File.Delete(backupPath);
+                        }
+                        File.Move(debugLogFilePath, backupPath);
+                    }
+                }
+
+                debugLogWriter = new StreamWriter(debugLogFilePath, append: true);
+                debugLogWriter.AutoFlush = true;
+
+                Debug.Log($"[VRLogger] Debug log file initialized: {debugLogFilePath}");
+                LogToFile("=== VRLogger Debug Log Started ===");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[VRLogger] Failed to initialize debug log file: {ex.Message}");
+            }
         }
 
         #endregion
@@ -745,15 +1638,24 @@ namespace VRLogDashboard
         {
             try
             {
-                if (pendingRequests.Count == 0) return;
-
-                var pendingLogs = LoadLocalLogFile();
-                while (pendingRequests.Count > 0)
+                // 동시성 제어: 큐를 안전하게 복사
+                var requestsToSave = new List<LogRequest>();
+                lock (queueLock)
                 {
-                    pendingLogs.requests.Add(pendingRequests.Dequeue());
+                    if (pendingRequests.Count == 0) return;
+
+                    // 큐의 모든 항목을 리스트로 복사
+                    while (pendingRequests.Count > 0)
+                    {
+                        requestsToSave.Add(pendingRequests.Dequeue());
+                    }
                 }
+
+                // lock 외부에서 파일 I/O 수행 (I/O는 시간이 오래 걸릴 수 있음)
+                var pendingLogs = LoadLocalLogFile();
+                pendingLogs.requests.AddRange(requestsToSave);
                 SaveLocalLogFile(pendingLogs);
-                Log($"Saved {pendingLogs.requests.Count} pending logs to local storage");
+                Log($"Saved {requestsToSave.Count} pending logs to local storage");
             }
             catch (Exception ex)
             {
@@ -765,15 +1667,23 @@ namespace VRLogDashboard
         {
             try
             {
+                // lock 외부에서 파일 I/O 수행
                 var pendingLogs = LoadLocalLogFile();
+
                 if (pendingLogs.requests.Count > 0)
                 {
                     Log($"Loaded {pendingLogs.requests.Count} pending logs from local storage");
-                    foreach (var request in pendingLogs.requests)
+
+                    // 동시성 제어: 큐에 안전하게 추가
+                    lock (queueLock)
                     {
-                        request.retryCount = 0; // Reset retry count
-                        pendingRequests.Enqueue(request);
+                        foreach (var request in pendingLogs.requests)
+                        {
+                            request.retryCount = 0; // Reset retry count
+                            pendingRequests.Enqueue(request);
+                        }
                     }
+
                     // Clear local file after loading
                     ClearLocalLogFile();
                     OnPendingLogsChanged?.Invoke(GetPendingLogCount());
@@ -847,10 +1757,26 @@ namespace VRLogDashboard
             // Load any locally saved logs
             LoadPendingLogsFromLocal();
 
-            // Process queue if there are pending requests
-            if (pendingRequests.Count > 0 && !isProcessingQueue)
+            // 동시성 제어: 큐 상태를 안전하게 확인
+            bool hasPendingRequests = false;
+            bool isProcessing = false;
+            int pendingCount = 0;
+
+            lock (queueLock)
             {
-                Log($"Retrying {pendingRequests.Count} pending logs");
+                pendingCount = pendingRequests.Count;
+                hasPendingRequests = pendingCount > 0;
+            }
+
+            lock (processingLock)
+            {
+                isProcessing = isProcessingQueue;
+            }
+
+            // Process queue if there are pending requests
+            if (hasPendingRequests && !isProcessing)
+            {
+                Log($"Retrying {pendingCount} pending logs");
                 await ProcessQueue();
             }
         }
@@ -911,6 +1837,41 @@ namespace VRLogDashboard
         #endregion
 
         #region Data Classes
+
+        /// <summary>
+        /// 인증 실패 예외 클래스 (401, 403)
+        /// </summary>
+        private class AuthenticationException : Exception
+        {
+            public long StatusCode { get; }
+
+            public AuthenticationException(long statusCode, string message) : base(message)
+            {
+                StatusCode = statusCode;
+            }
+        }
+
+        /// <summary>
+        /// 세션 없음 예외 클래스 (404 - Session not found)
+        /// </summary>
+        private class SessionNotFoundException : Exception
+        {
+            public SessionNotFoundException(string message) : base(message)
+            {
+            }
+        }
+
+        /// <summary>
+        /// HTTPS 인증서 검증 우회 핸들러 (개발용)
+        /// </summary>
+        private class AcceptAllCertificatesHandler : UnityEngine.Networking.CertificateHandler
+        {
+            protected override bool ValidateCertificate(byte[] certificateData)
+            {
+                // 모든 인증서를 허용 (개발/테스트용)
+                return true;
+            }
+        }
 
         [Serializable]
         private class BaseResponse
