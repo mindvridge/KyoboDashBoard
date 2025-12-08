@@ -804,6 +804,42 @@ namespace VRLogDashboard
 
         #region Private Methods
 
+        /// <summary>
+        /// 요청의 session_id를 새 세션 ID로 업데이트합니다.
+        /// </summary>
+        private LogRequest UpdateRequestSessionId(LogRequest request, string oldSessionId, string newSessionId)
+        {
+            if (string.IsNullOrEmpty(oldSessionId) || string.IsNullOrEmpty(newSessionId))
+            {
+                LogDebug($"Cannot update session ID: old={oldSessionId}, new={newSessionId}");
+                return request;
+            }
+
+            try
+            {
+                // JSON body에서 session_id 교체
+                string updatedBody = request.body.Replace(
+                    $"\"session_id\":\"{oldSessionId}\"",
+                    $"\"session_id\":\"{newSessionId}\""
+                );
+
+                LogDebug($"Updated request session_id: {oldSessionId} -> {newSessionId}");
+
+                return new LogRequest
+                {
+                    endpoint = request.endpoint,
+                    body = updatedBody,
+                    retryCount = request.retryCount,
+                    timestamp = request.timestamp
+                };
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to update session ID in request: {ex.Message}");
+                return request;
+            }
+        }
+
         private async Task<bool> LogWatchEvent(string contentId, string contentName, string actionType, float duration)
         {
             if (!HasActiveSession)
@@ -928,6 +964,7 @@ namespace VRLogDashboard
                         LogDebug("Attempting to restart session...");
 
                         // 현재 세션 ID 초기화
+                        string oldSessionId = currentSessionId;
                         currentSessionId = null;
 
                         // 로그인 상태 확인
@@ -941,7 +978,9 @@ namespace VRLogDashboard
                             if (reloginSuccess)
                             {
                                 Log("Relogin successful, session will be restarted automatically");
-                                failedRequests.Add(request);
+                                // 새 세션 ID로 요청 업데이트
+                                var updatedRequest = UpdateRequestSessionId(request, oldSessionId, currentSessionId);
+                                failedRequests.Add(updatedRequest);
                             }
                             else
                             {
@@ -959,7 +998,9 @@ namespace VRLogDashboard
                             if (sessionStarted)
                             {
                                 Log("Session restarted successfully, retrying failed request");
-                                failedRequests.Add(request);
+                                // 새 세션 ID로 요청 업데이트
+                                var updatedRequest = UpdateRequestSessionId(request, oldSessionId, currentSessionId);
+                                failedRequests.Add(updatedRequest);
                             }
                             else
                             {
