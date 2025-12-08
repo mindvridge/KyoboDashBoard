@@ -2,6 +2,19 @@ const rawApiBase = process.env.NEXT_PUBLIC_API_URL || 'https://kyobodashboard-pr
 // Remove trailing /api or /api/ if present to avoid duplication
 const API_BASE = rawApiBase.replace(/\/api\/?$/, '');
 
+// 401 에러 시 자동 로그아웃 처리
+function handleUnauthorized() {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('dev_mode');
+    // 로그인 페이지로 리다이렉트
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login';
+    }
+  }
+}
+
 export async function fetchApi<T>(
   endpoint: string,
   options?: RequestInit
@@ -17,6 +30,10 @@ export async function fetchApi<T>(
   });
 
   if (!response.ok) {
+    // 401 Unauthorized - 토큰 만료 또는 유효하지 않음
+    if (response.status === 401) {
+      handleUnauthorized();
+    }
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error?.message || `API Error: ${response.status}`);
   }
