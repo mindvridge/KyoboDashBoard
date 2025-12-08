@@ -531,6 +531,28 @@ namespace VRLogDashboard
                         throw new Exception("Server returned failure response");
                     }
                 }
+                catch (SessionNotActiveException)
+                {
+                    // 세션이 만료됨 - 재시작 시도
+                    LogError("Session not found: Session is not active (HTTP 400)");
+                    Log("Attempting to restart session...");
+
+                    bool sessionRestarted = await StartSession();
+                    if (sessionRestarted)
+                    {
+                        // 세션 ID를 새로운 것으로 업데이트하고 재시도
+                        request.body = UpdateSessionIdInBody(request.body, currentSessionId);
+                        request.retryCount = 0;
+                        failedRequests.Add(request);
+                        Log("Session restarted, re-queuing request");
+                    }
+                    else
+                    {
+                        // 세션 재시작 실패 - 로컬에 저장
+                        SaveFailedLogToLocal(request);
+                        LogError("Failed to restart session, saved log locally");
+                    }
+                }
                 catch (Exception ex)
                 {
                     LogError($"Failed to process request: {ex.Message}");
@@ -570,6 +592,28 @@ namespace VRLogDashboard
             }
         }
 
+        private string UpdateSessionIdInBody(string jsonBody, string newSessionId)
+        {
+            // JSON body에서 session_id를 새로운 것으로 교체
+            try
+            {
+                // 간단한 문자열 치환 (JSON 파싱 없이)
+                var pattern = "\"session_id\":\"[^\"]*\"";
+                var replacement = $"\"session_id\":\"{newSessionId}\"";
+                return System.Text.RegularExpressions.Regex.Replace(jsonBody, pattern, replacement);
+            }
+            catch
+            {
+                return jsonBody;
+            }
+        }
+
+        // 세션 비활성 예외
+        private class SessionNotActiveException : Exception
+        {
+            public SessionNotActiveException(string message) : base(message) { }
+        }
+
         private async Task<T> PostRequest<T>(string endpoint, string jsonBody, bool authenticated) where T : class
         {
             var url = serverUrl + endpoint;
@@ -593,6 +637,8 @@ namespace VRLogDashboard
                     await Task.Yield();
                 }
 
+                Log($"Request completed. Status: {request.result}, ResponseCode: {request.responseCode}");
+
                 if (request.result == UnityWebRequest.Result.Success)
                 {
                     var response = JsonUtility.FromJson<T>(request.downloadHandler.text);
@@ -600,7 +646,17 @@ namespace VRLogDashboard
                 }
                 else
                 {
-                    LogError($"Request failed: {request.error} - {request.downloadHandler.text}");
+                    var responseText = request.downloadHandler.text;
+
+                    // 400 에러이고 "Session is not active" 메시지인 경우
+                    if (request.responseCode == 400 &&
+                        (responseText.Contains("Session is not active") || responseText.Contains("Session not found")))
+                    {
+                        LogError($"Session is not active (HTTP 400)");
+                        throw new SessionNotActiveException("Session is not active");
+                    }
+
+                    LogError($"Request failed: {request.error} - {responseText}");
                     throw new Exception(request.error);
                 }
             }
