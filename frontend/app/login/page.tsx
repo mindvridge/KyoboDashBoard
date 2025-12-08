@@ -93,6 +93,7 @@ export default function LoginPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="admin@kyobo.com"
                     className="pl-10"
+                    autoComplete="email"
                     required
                   />
                 </div>
@@ -108,6 +109,7 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="비밀번호를 입력하세요"
                     className="pl-10"
+                    autoComplete="current-password"
                     required
                   />
                 </div>
