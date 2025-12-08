@@ -1036,6 +1036,32 @@ namespace VRLogDashboard
                             break;
                         }
                     }
+                    catch (RateLimitException)
+                    {
+                        // Rate Limit 초과 (429) - Exponential backoff로 대기 후 재시도
+                        request.retryCount++;
+                        int backoffSeconds = (int)Math.Pow(2, request.retryCount); // 2, 4, 8, 16...
+                        backoffSeconds = Math.Min(backoffSeconds, 60); // 최대 60초
+
+                        Log($"Rate limited, waiting {backoffSeconds}s before retry ({request.retryCount}/{maxRetryCount})");
+
+                        if (request.retryCount < maxRetryCount)
+                        {
+                            // Exponential backoff 대기
+                            await Task.Delay(backoffSeconds * 1000);
+                            failedRequests.Add(request);
+                        }
+                        else
+                        {
+                            // Max retries exceeded - save to local storage
+                            SaveFailedLogToLocal(request);
+                            LogError($"Rate limit exceeded after {maxRetryCount} retries, saved locally");
+
+                            // 모든 요청을 잠시 멈추고 대기 (서버 부하 감소)
+                            Log("Pausing queue processing for 30 seconds due to rate limiting");
+                            await Task.Delay(30000);
+                        }
+                    }
                     catch (Exception ex)
                     {
                         LogError($"Failed to process request: {ex.Message}");
@@ -1207,6 +1233,14 @@ namespace VRLogDashboard
                         var sessionError = $"Session not found (HTTP 404)";
                         LogError(sessionError);
                         throw new SessionNotFoundException(sessionError);
+                    }
+
+                    // 429 Too Many Requests - Rate Limit 초과
+                    if (statusCode == 429)
+                    {
+                        var rateLimitError = $"Rate limit exceeded (HTTP 429)";
+                        LogError(rateLimitError);
+                        throw new RateLimitException(rateLimitError);
                     }
 
                     // 기타 에러
@@ -1898,6 +1932,16 @@ namespace VRLogDashboard
         private class SessionNotFoundException : Exception
         {
             public SessionNotFoundException(string message) : base(message)
+            {
+            }
+        }
+
+        /// <summary>
+        /// Rate Limit 초과 예외 클래스 (429 - Too Many Requests)
+        /// </summary>
+        private class RateLimitException : Exception
+        {
+            public RateLimitException(string message) : base(message)
             {
             }
         }

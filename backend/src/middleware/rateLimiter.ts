@@ -1,6 +1,5 @@
 import rateLimit from 'express-rate-limit';
 import { config } from '../config';
-import { RateLimitError } from '../utils/errors';
 
 export const apiLimiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
@@ -14,8 +13,8 @@ export const apiLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (_req, _res, _next, options) => {
-    throw new RateLimitError(options.message as string);
+  handler: (_req, res, _next, options) => {
+    res.status(429).json(options.message);
   },
 });
 
@@ -34,17 +33,25 @@ export const registrationLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Lenient rate limit for logging endpoints
+// Lenient rate limit for logging endpoints (VR devices send frequent logs)
 export const loggingLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 120, // 120 requests per minute (2 per second)
+  max: 300, // 300 requests per minute (5 per second)
   message: {
     success: false,
     error: {
       code: 'RATE_LIMIT_EXCEEDED',
-      message: 'Too many log requests',
+      message: 'Too many log requests, please slow down',
     },
   },
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => {
+    // Rate limit by device token instead of IP (VR devices may share IP)
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      return authHeader.substring(7);
+    }
+    return req.ip || 'unknown';
+  },
 });
