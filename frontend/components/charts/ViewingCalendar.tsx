@@ -36,12 +36,21 @@ interface DailyDetail {
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
+// 오늘 날짜를 YYYY-MM-DD 형식으로 반환
+const getTodayString = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export function ViewingCalendar() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [monthlyData, setMonthlyData] = useState<DayStat[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(getTodayString());
   const [dailyDetail, setDailyDetail] = useState<DailyDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
