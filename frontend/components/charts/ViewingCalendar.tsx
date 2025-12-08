@@ -7,6 +7,7 @@ import { statsApi } from '@/utils/api';
 import { ChevronLeft, ChevronRight, Calendar, Monitor, Clock, Video } from 'lucide-react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface DayStat {
   date: string;
@@ -36,6 +37,7 @@ interface DailyDetail {
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
 export function ViewingCalendar() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [monthlyData, setMonthlyData] = useState<DayStat[]>([]);
@@ -46,6 +48,11 @@ export function ViewingCalendar() {
 
   // Fetch monthly data
   useEffect(() => {
+    // 인증 확인 전에는 API 호출하지 않음
+    if (authLoading || !isAuthenticated) {
+      return;
+    }
+
     const fetchMonthly = async () => {
       setIsLoading(true);
       try {
@@ -60,12 +67,17 @@ export function ViewingCalendar() {
       }
     };
     fetchMonthly();
-  }, [year, month]);
+  }, [year, month, authLoading, isAuthenticated]);
 
   // Fetch daily detail when date is selected
   useEffect(() => {
     if (!selectedDate) {
       setDailyDetail(null);
+      return;
+    }
+
+    // 인증 확인 전에는 API 호출하지 않음
+    if (authLoading || !isAuthenticated) {
       return;
     }
 
@@ -86,7 +98,7 @@ export function ViewingCalendar() {
       }
     };
     fetchDaily();
-  }, [selectedDate]);
+  }, [selectedDate, authLoading, isAuthenticated]);
 
   // Generate calendar days
   const generateCalendarDays = () => {

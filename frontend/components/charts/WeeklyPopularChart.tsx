@@ -14,6 +14,7 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { statsApi } from '@/utils/api';
 import { Trophy } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface WeeklyPopularChartProps {
   title?: string;
@@ -28,10 +29,16 @@ interface PopularContent {
 const COLORS = ['#f59e0b', '#eab308', '#84cc16', '#22c55e', '#14b8a6', '#06b6d4'];
 
 export function WeeklyPopularChart({ title = '주간 인기 영상' }: WeeklyPopularChartProps) {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [data, setData] = useState<PopularContent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // 인증 확인 전에는 API 호출하지 않음
+    if (authLoading || !isAuthenticated) {
+      return;
+    }
+
     const fetchWeeklyPopular = async () => {
       try {
         const now = new Date();
@@ -47,16 +54,19 @@ export function WeeklyPopularChart({ title = '주간 인기 영상' }: WeeklyPop
           setData(result.data);
         }
       } catch (error) {
-        console.error('Failed to fetch weekly popular:', error);
+        // 401 에러는 조용히 처리 (인증 만료)
+        if (error instanceof Error && error.message.includes('401')) {
+          console.warn('Authentication expired for weekly popular');
+        } else {
+          console.error('Failed to fetch weekly popular:', error);
+        }
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchWeeklyPopular();
-    const interval = setInterval(fetchWeeklyPopular, 60000); // Refresh every minute
-    return () => clearInterval(interval);
-  }, []);
+  }, [authLoading, isAuthenticated]);
 
   const chartData = data.slice(0, 6).map((item) => ({
     name: item.content_name.length > 12
@@ -67,7 +77,7 @@ export function WeeklyPopularChart({ title = '주간 인기 영상' }: WeeklyPop
     watchTime: Math.round(item.total_watch_time / 60),
   }));
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <Card>
         <CardHeader>
