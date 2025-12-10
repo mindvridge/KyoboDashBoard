@@ -4,7 +4,7 @@ import { ContentLogModel } from '../models/contentLog';
 import { generateToken } from '../middleware/auth';
 import { Device, DeviceRegistrationRequest, DeviceRegistrationResponse } from '../types';
 import { logger } from '../utils/logger';
-import { cacheGet, cacheSet, cacheDelete } from '../config/redis';
+import { cacheGet, cacheSet, cacheDelete, cacheInvalidatePattern } from '../config/redis';
 import { NotFoundError } from '../utils/errors';
 
 const CACHE_TTL = 300; // 5 minutes
@@ -32,6 +32,9 @@ export class DeviceService {
       });
       isNewDevice = true;
       logger.info('New device registered', { device_id: data.device_id });
+      
+      // 새 기기 등록 시 통계 캐시 무효화 (기기 목록 갱신을 위해)
+      await cacheInvalidatePattern('stats:*');
     }
 
     // Generate JWT token
@@ -105,6 +108,9 @@ export class DeviceService {
     // 디바이스 삭제
     await DeviceModel.delete(id);
     await cacheDelete(`device:${id}`);
+    
+    // 통계 캐시 무효화 (기기 목록 및 통계 갱신을 위해)
+    await cacheInvalidatePattern('stats:*');
 
     return { logsDeleted, sessionsDeleted };
   }

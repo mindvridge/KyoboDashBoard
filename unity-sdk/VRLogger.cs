@@ -630,7 +630,11 @@ namespace VRLogDashboard
         {
             if (!HasActiveSession)
             {
-                LogError("Cannot log: No active session");
+                // 세션이 없을 때는 조용히 실패 (너무 많은 에러 로그 방지)
+                if (enableDebugLogs)
+                {
+                    LogDebug("Cannot log: No active session (silent fail)");
+                }
                 return false;
             }
 
@@ -919,7 +923,11 @@ namespace VRLogDashboard
         {
             if (!HasActiveSession)
             {
-                LogError("Cannot log: No active session");
+                // 세션이 없을 때는 조용히 실패 (너무 많은 에러 로그 방지)
+                if (enableDebugLogs)
+                {
+                    LogDebug("Cannot log: No active session (silent fail)");
+                }
                 return false;
             }
 
@@ -1494,10 +1502,14 @@ namespace VRLogDashboard
 
         /// <summary>
         /// 항상 기록되는 디버그 로그 (VR 기기 디버깅용)
+        /// enableDebugLogs가 false일 때는 파일에만 기록하고 Unity 콘솔에는 출력하지 않음
         /// </summary>
         private void LogDebug(string message)
         {
-            Debug.Log($"[VRLogger] {message}");
+            if (enableDebugLogs)
+            {
+                Debug.Log($"[VRLogger] {message}");
+            }
             LogToFile($"[DEBUG] {message}");
         }
 
