@@ -68,9 +68,10 @@ export class ContentLogService {
       throw new ValidationError('Session is not active');
     }
 
-    // WATCH_END에서 duration이 0이거나 없으면 WATCH_START 시간으로 계산
+    // WATCH_END에서 서버 타임스탬프 기준으로 duration 계산 (우선)
+    // 클라이언트에서 보낸 duration은 참고용으로만 사용
     let calculatedDuration = duration;
-    if (actionType === 'WATCH_END' && (!duration || duration <= 0)) {
+    if (actionType === 'WATCH_END') {
       const watchStart = await ContentLogModel.findLastWatchStart(sessionId, contentId);
       if (watchStart && watchStart.timestamp) {
         const startTime = new Date(watchStart.timestamp).getTime();
@@ -80,19 +81,30 @@ export class ContentLogService {
         // 최대 30분(1800초)으로 제한, 음수 방지
         calculatedDuration = Math.max(0, Math.min(rawDuration, 1800));
 
-        logger.info('Calculated watch duration from timestamps', {
+        logger.info('Calculated watch duration from server timestamps', {
           session_id: sessionId,
           content_id: contentId,
           watch_start_session: watchStart.session_id,
           start_time: watchStart.timestamp,
           raw_duration: rawDuration,
           calculated_duration: calculatedDuration,
+          client_duration: duration,
         });
       } else {
-        logger.warn('No WATCH_START found for duration calculation', {
-          session_id: sessionId,
-          content_id: contentId,
-        });
+        // WATCH_START를 못 찾으면 클라이언트 값 사용 (fallback)
+        if (duration && duration > 0) {
+          calculatedDuration = Math.min(duration, 1800);
+          logger.warn('Using client duration (no WATCH_START found)', {
+            session_id: sessionId,
+            content_id: contentId,
+            client_duration: duration,
+          });
+        } else {
+          logger.warn('No WATCH_START found and no client duration', {
+            session_id: sessionId,
+            content_id: contentId,
+          });
+        }
       }
     }
 
