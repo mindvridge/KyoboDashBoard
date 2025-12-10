@@ -86,12 +86,12 @@ export class ContentLogModel {
       SELECT
         content_id,
         content_name,
-        COUNT(*) as view_count,
+        COUNT(CASE WHEN action_type = 'WATCH_START' THEN 1 END) as view_count,
         SUM(CASE WHEN action_type = 'WATCH_END' THEN duration ELSE 0 END) as total_watch_time,
         AVG(CASE WHEN action_type = 'WATCH_END' THEN duration END) as avg_watch_time
       FROM content_logs
       WHERE timestamp >= $1 AND timestamp <= $2
-        AND action_type IN ('SELECT', 'WATCH_END')
+        AND action_type IN ('WATCH_START', 'WATCH_END')
       GROUP BY content_id, content_name
       ORDER BY view_count DESC
       LIMIT $3
@@ -431,7 +431,7 @@ export class ContentLogModel {
         COUNT(*) as watch_count
       FROM content_logs
       WHERE DATE(timestamp AT TIME ZONE 'Asia/Seoul') = DATE($1 AT TIME ZONE 'Asia/Seoul')
-        AND action_type IN ('WATCH_START', 'WATCH_END')
+        AND action_type = 'WATCH_START'
       GROUP BY EXTRACT(HOUR FROM timestamp AT TIME ZONE 'Asia/Seoul')
       ORDER BY hour
     `;
