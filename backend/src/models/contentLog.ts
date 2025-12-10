@@ -149,10 +149,12 @@ export class ContentLogModel {
       SELECT
         cl.content_id,
         cl.content_name,
-        COUNT(CASE WHEN cl.action_type = 'SELECT' THEN 1 END) as view_count,
+        COUNT(CASE WHEN cl.action_type = 'WATCH_START' THEN 1 END) as watch_start_count,
+        COUNT(CASE WHEN cl.action_type = 'WATCH_END' THEN 1 END) as watch_end_count,
         COALESCE(SUM(CASE WHEN cl.action_type = 'WATCH_END' THEN LEAST(cl.duration, 1800) ELSE 0 END), 0) as total_watch_time
       FROM content_logs cl
       WHERE DATE(cl.timestamp AT TIME ZONE 'Asia/Seoul') = DATE($1 AT TIME ZONE 'Asia/Seoul')
+        AND cl.action_type IN ('WATCH_START', 'WATCH_END')
       GROUP BY cl.content_id, cl.content_name
       ORDER BY total_watch_time DESC
     `;

@@ -334,7 +334,8 @@ export class StatsController {
         content_stats: (contentStats as any[]).map((c: any) => ({
           content_id: c.content_id,
           content_name: c.content_name,
-          view_count: parseInt(c.view_count || '0', 10),
+          watch_start_count: parseInt(c.watch_start_count || '0', 10),
+          watch_end_count: parseInt(c.watch_end_count || '0', 10),
           total_watch_time: parseInt(c.total_watch_time || '0', 10),
         })),
         device_viewings: Array.from(deviceMap.values()),

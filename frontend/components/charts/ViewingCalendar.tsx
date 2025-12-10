@@ -19,7 +19,8 @@ interface DayStat {
 interface ContentStat {
   content_id: string;
   content_name: string;
-  view_count: number;
+  watch_start_count: number;
+  watch_end_count: number;
   total_watch_time: number;
 }
 
@@ -313,10 +314,11 @@ export function ViewingCalendar() {
                         key={content.content_id}
                         className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
                       >
-                        <span className="text-sm truncate max-w-[200px]">{content.content_name}</span>
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                          <span>{content.view_count}회</span>
-                          <span className="text-green-600 font-medium">
+                        <span className="text-sm truncate max-w-[150px]">{content.content_name}</span>
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-blue-600">시작 {content.watch_start_count}</span>
+                          <span className="text-green-600">완료 {content.watch_end_count}</span>
+                          <span className="text-purple-600 font-medium">
                             {formatWatchTime(content.total_watch_time)}
                           </span>
                         </div>
