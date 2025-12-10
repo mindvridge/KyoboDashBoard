@@ -23,6 +23,44 @@ const actionColors: Record<string, 'default' | 'success' | 'warning' | 'info'> =
 
 const MAX_WATCH_TIME = 20 * 60; // 20분 (초)
 
+// WATCH_START에 대한 시청 시간 계산 (해당 WATCH_END 찾기)
+function calculateWatchDuration(
+  log: any,
+  allLogs: any[]
+): number | null {
+  // WATCH_END는 이미 duration이 있으면 그대로 반환
+  if (log.action_type === 'WATCH_END') {
+    return log.duration ?? null;
+  }
+
+  // WATCH_START인 경우 해당 WATCH_END 찾기
+  if (log.action_type === 'WATCH_START') {
+    const startTime = new Date(log.timestamp).getTime();
+
+    // 같은 세션, 같은 콘텐츠의 WATCH_END 중 가장 가까운 것 찾기
+    const matchingEnd = allLogs.find(
+      (l) =>
+        l.action_type === 'WATCH_END' &&
+        l.session_id === log.session_id &&
+        l.content_id === log.content_id &&
+        new Date(l.timestamp).getTime() > startTime
+    );
+
+    if (matchingEnd) {
+      // WATCH_END에 duration이 있으면 사용
+      if (matchingEnd.duration && matchingEnd.duration > 0) {
+        return matchingEnd.duration;
+      }
+      // 없으면 시간 차이로 계산
+      const endTime = new Date(matchingEnd.timestamp).getTime();
+      const duration = Math.floor((endTime - startTime) / 1000);
+      return Math.min(duration, MAX_WATCH_TIME);
+    }
+  }
+
+  return null;
+}
+
 export default function LogsPage() {
   const [logs, setLogs] = useState<any[]>([]);
   const [devices, setDevices] = useState<any[]>([]);
@@ -270,12 +308,16 @@ export default function LogsPage() {
 
   const formatWatchTime = (duration: number | null | undefined, actionType: string) => {
     if (duration == null || duration <= 0) {
+      // WATCH_START인데 매칭되는 WATCH_END가 없는 경우
+      if (actionType === 'WATCH_START') {
+        return '진행 중';
+      }
       return actionType === 'WATCH_END' ? '0초' : '-';
     }
     // 최대 20분으로 제한
     const cappedDuration = Math.min(duration, MAX_WATCH_TIME);
     const minutes = Math.floor(cappedDuration / 60);
-    const seconds = cappedDuration % 60;
+    const seconds = Math.round(cappedDuration % 60);
     if (minutes > 0) {
       return `${minutes}분 ${seconds}초`;
     }
@@ -471,7 +513,7 @@ export default function LogsPage() {
                               </Badge>
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-600 text-right">
-                              {formatWatchTime(log.duration, log.action_type)}
+                              {formatWatchTime(calculateWatchDuration(log, logs), log.action_type)}
                             </td>
                           </tr>
                         ))}
