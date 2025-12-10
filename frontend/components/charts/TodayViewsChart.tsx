@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import { logsApi } from '@/utils/api';
-import { PlayCircle, Clock, Eye } from 'lucide-react';
+import { Clock, Eye, ExternalLink } from 'lucide-react';
 import { formatDuration } from '@/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
+import Link from 'next/link';
 
 interface TodayViewsChartProps {
   title?: string;
@@ -41,9 +43,9 @@ export function TodayViewsChart({ title = '오늘 시청 현황' }: TodayViewsCh
         });
 
         if (result.success) {
-          // Filter to show only WATCH_START and WATCH_END actions (exclude SELECT)
+          // WATCH_END(시청 완료)만 표시
           const viewLogs = result.data
-            .filter((log: ViewLog) => ['WATCH_START', 'WATCH_END'].includes(log.action_type))
+            .filter((log: ViewLog) => log.action_type === 'WATCH_END')
             .slice(0, 10);
           setLogs(viewLogs);
         }
@@ -97,7 +99,7 @@ export function TodayViewsChart({ title = '오늘 시청 현황' }: TodayViewsCh
         </CardHeader>
         <CardContent>
           <div className="h-[300px] flex items-center justify-center">
-            <div className="text-gray-500">오늘 시청 기록이 없습니다</div>
+            <div className="text-gray-500">오늘 시청 완료 기록이 없습니다</div>
           </div>
         </CardContent>
       </Card>
@@ -107,10 +109,18 @@ export function TodayViewsChart({ title = '오늘 시청 현황' }: TodayViewsCh
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Eye className="w-5 h-5 text-blue-500" />
-          {title}
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Eye className="w-5 h-5 text-blue-500" />
+            {title}
+          </CardTitle>
+          <Link href="/today-views">
+            <Button variant="outline" size="sm" className="flex items-center gap-1">
+              <ExternalLink className="w-4 h-4" />
+              자세히 보기
+            </Button>
+          </Link>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="h-[300px] overflow-y-auto">
@@ -120,16 +130,8 @@ export function TodayViewsChart({ title = '오늘 시청 현황' }: TodayViewsCh
                 key={index}
                 className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
               >
-                <div className={`p-2 rounded-lg ${
-                  log.action_type === 'WATCH_START'
-                    ? 'bg-blue-100 text-blue-600'
-                    : 'bg-green-100 text-green-600'
-                }`}>
-                  {log.action_type === 'WATCH_START' ? (
-                    <PlayCircle className="w-4 h-4" />
-                  ) : (
-                    <Clock className="w-4 h-4" />
-                  )}
+                <div className="p-2 rounded-lg bg-green-100 text-green-600">
+                  <Clock className="w-4 h-4" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">
@@ -139,7 +141,7 @@ export function TodayViewsChart({ title = '오늘 시청 현황' }: TodayViewsCh
                     <span className="text-xs text-gray-500">
                       {formatTime(log.timestamp)}
                     </span>
-                    {log.action_type === 'WATCH_END' && log.duration && (
+                    {log.duration && log.duration > 0 && (
                       <span className="text-xs text-green-600">
                         {formatDuration(log.duration)} 시청
                       </span>
@@ -151,12 +153,8 @@ export function TodayViewsChart({ title = '오늘 시청 현황' }: TodayViewsCh
                     )}
                   </div>
                 </div>
-                <span className={`text-xs px-2 py-1 rounded-full ${
-                  log.action_type === 'WATCH_START'
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'bg-green-100 text-green-700'
-                }`}>
-                  {log.action_type === 'WATCH_START' ? '시작' : '완료'}
+                <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
+                  완료
                 </span>
               </div>
             ))}

@@ -81,7 +81,12 @@ export default function LogsPage() {
       if (response.success) {
         let filteredLogs = response.data;
 
-        // Filter by action type
+        // 기본: WATCH_START, WATCH_END만 표시 (SELECT 제외)
+        filteredLogs = filteredLogs.filter((l: any) =>
+          ['WATCH_START', 'WATCH_END'].includes(l.action_type)
+        );
+
+        // Filter by action type (추가 필터)
         if (filters.actionType) {
           filteredLogs = filteredLogs.filter((l: any) => l.action_type === filters.actionType);
         }
@@ -333,11 +338,8 @@ export default function LogsPage() {
                   onChange={(e) => setFilters({ ...filters, actionType: e.target.value })}
                 >
                   <option value="">전체</option>
-                  <option value="SELECT">콘텐츠 선택</option>
                   <option value="WATCH_START">시청 시작</option>
                   <option value="WATCH_END">시청 완료</option>
-                  <option value="WATCH_PAUSE">일시 정지</option>
-                  <option value="WATCH_RESUME">재생 재개</option>
                 </Select>
                 <div className="relative">
                   <Input

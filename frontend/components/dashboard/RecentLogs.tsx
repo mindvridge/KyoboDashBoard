@@ -42,11 +42,8 @@ export function RecentLogs() {
       try {
         const response = await logsApi.getRecent(30);
         if (response.success) {
-          // SELECT 로그 제외 (WATCH_START, WATCH_END, WATCH_PAUSE, WATCH_RESUME만 표시)
-          const filteredLogs = response.data
-            .filter((log: ContentLog) => log.action_type !== 'SELECT')
-            .slice(0, 20);
-          setLogs(filteredLogs);
+          // 모든 로그 표시 (SELECT, WATCH_START, WATCH_END 등)
+          setLogs(response.data.slice(0, 20));
         }
       } catch {
         // Error handled silently
