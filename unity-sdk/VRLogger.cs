@@ -1085,13 +1085,16 @@ namespace VRLogDashboard
                     }
                     catch (SessionNotFoundException sessionEx)
                     {
-                        // 세션 없음 (404) - 세션 재시작 시도
+                        // 세션 없음 (404) 또는 유효성 검증 실패 - 세션 재시작 시도
                         LogError($"Session not found: {sessionEx.Message}");
                         LogDebug("Attempting to restart session...");
 
                         // 현재 세션 ID 초기화
                         string oldSessionId = currentSessionId;
                         currentSessionId = null;
+
+                        // 저장된 세션 정보 삭제 (기기 삭제 등으로 무효화된 경우 대비)
+                        ClearSavedSession();
 
                         // 로그인 상태 확인
                         if (!IsLoggedIn)
@@ -1353,6 +1356,14 @@ namespace VRLogDashboard
                     if (statusCode == 400 && responseBody.Contains("Session is not active"))
                     {
                         var sessionError = $"Session is not active (HTTP 400)";
+                        LogError(sessionError);
+                        throw new SessionNotFoundException(sessionError);
+                    }
+
+                    // 400 Bad Request - 유효성 검증 실패 (세션이 삭제되었을 수 있음)
+                    if (statusCode == 400 && responseBody.Contains("VALIDATION_ERROR"))
+                    {
+                        var sessionError = $"Validation error, session may be invalid (HTTP 400)";
                         LogError(sessionError);
                         throw new SessionNotFoundException(sessionError);
                     }
