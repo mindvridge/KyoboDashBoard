@@ -3,8 +3,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { statsApi, sessionsApi } from '@/utils/api';
 import { DashboardStats, Session, Alert } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function useDashboard() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [activeSessions, setActiveSessions] = useState<Session[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -24,7 +26,12 @@ export function useDashboard() {
       if (sessionsRes.success) setActiveSessions(sessionsRes.data);
       if (alertsRes.success) setAlerts(alertsRes.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch dashboard data');
+      // 401 에러는 조용히 처리 (인증 만료)
+      if (err instanceof Error && err.message.includes('401')) {
+        console.warn('Authentication expired for dashboard');
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to fetch dashboard data');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -53,8 +60,12 @@ export function useDashboard() {
   }, [fetchData]);
 
   useEffect(() => {
+    // 인증 확인 전에는 API 호출하지 않음
+    if (authLoading || !isAuthenticated) {
+      return;
+    }
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, authLoading, isAuthenticated]);
 
   return {
     stats,

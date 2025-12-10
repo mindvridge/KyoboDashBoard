@@ -7,6 +7,7 @@ import { logsApi } from '@/utils/api';
 import { ContentLog } from '@/types';
 import { formatDate, getActionTypeLabel } from '@/utils/format';
 import { Play, Pause, Square, MousePointer, ArrowRight } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 const actionIcons: Record<string, typeof Play> = {
   SELECT: MousePointer,
@@ -27,10 +28,16 @@ const actionColors: Record<string, 'default' | 'success' | 'warning' | 'error' |
 };
 
 export function RecentLogs() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [logs, setLogs] = useState<ContentLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // 인증 확인 전에는 API 호출하지 않음
+    if (authLoading || !isAuthenticated) {
+      return;
+    }
+
     const fetchLogs = async () => {
       try {
         const response = await logsApi.getRecent(20);
@@ -47,9 +54,9 @@ export function RecentLogs() {
     fetchLogs();
     const interval = setInterval(fetchLogs, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [authLoading, isAuthenticated]);
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <Card>
         <CardHeader>

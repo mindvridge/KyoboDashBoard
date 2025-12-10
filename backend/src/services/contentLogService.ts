@@ -68,12 +68,33 @@ export class ContentLogService {
       throw new ValidationError('Session is not active');
     }
 
+    // WATCH_END에서 duration이 0이거나 없으면 WATCH_START 시간으로 계산
+    let calculatedDuration = duration;
+    if (actionType === 'WATCH_END' && (!duration || duration <= 0)) {
+      const watchStart = await ContentLogModel.findLastWatchStart(sessionId, contentId);
+      if (watchStart && watchStart.timestamp) {
+        const startTime = new Date(watchStart.timestamp).getTime();
+        const endTime = Date.now();
+        calculatedDuration = Math.floor((endTime - startTime) / 1000); // 초 단위
+
+        // 최대 20분(1200초)으로 제한
+        calculatedDuration = Math.min(calculatedDuration, 1200);
+
+        logger.info('Calculated watch duration from timestamps', {
+          session_id: sessionId,
+          content_id: contentId,
+          start_time: watchStart.timestamp,
+          calculated_duration: calculatedDuration,
+        });
+      }
+    }
+
     const log = await ContentLogModel.create({
       session_id: sessionId,
       content_id: contentId,
       content_name: contentName,
       action_type: actionType,
-      duration,
+      duration: calculatedDuration,
       metadata,
     });
 

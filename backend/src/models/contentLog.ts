@@ -40,6 +40,20 @@ export class ContentLogModel {
     return query<ContentLog>(sql, [sessionId]);
   }
 
+  /**
+   * 특정 세션과 콘텐츠의 마지막 WATCH_START 이벤트를 찾습니다.
+   */
+  static async findLastWatchStart(sessionId: string, contentId: string): Promise<ContentLog | null> {
+    const sql = `
+      SELECT * FROM content_logs
+      WHERE session_id = $1 AND content_id = $2 AND action_type = 'WATCH_START'
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `;
+    const rows = await query<ContentLog>(sql, [sessionId, contentId]);
+    return rows[0] || null;
+  }
+
   static async getRecentLogs(limit = 50): Promise<ContentLog[]> {
     const sql = `
       SELECT cl.*, s.device_id, d.device_id as device_info

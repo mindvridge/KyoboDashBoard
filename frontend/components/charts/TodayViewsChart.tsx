@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { logsApi } from '@/utils/api';
 import { PlayCircle, Clock, Eye } from 'lucide-react';
 import { formatDuration } from '@/utils/format';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface TodayViewsChartProps {
   title?: string;
@@ -19,10 +20,16 @@ interface ViewLog {
 }
 
 export function TodayViewsChart({ title = '오늘 시청 현황' }: TodayViewsChartProps) {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [logs, setLogs] = useState<ViewLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // 인증 확인 전에는 API 호출하지 않음
+    if (authLoading || !isAuthenticated) {
+      return;
+    }
+
     const fetchTodayLogs = async () => {
       try {
         const now = new Date();
@@ -50,7 +57,7 @@ export function TodayViewsChart({ title = '오늘 시청 현황' }: TodayViewsCh
     fetchTodayLogs();
     const interval = setInterval(fetchTodayLogs, 30000); // Refresh every 30 seconds
     return () => clearInterval(interval);
-  }, []);
+  }, [authLoading, isAuthenticated]);
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);

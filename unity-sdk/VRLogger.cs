@@ -103,6 +103,10 @@ namespace VRLogDashboard
         private const string PREF_SESSION_ID = "VRLogger_SessionId";
         private const string PREF_SESSION_TIMESTAMP = "VRLogger_SessionTimestamp";
         private const string PREF_DEVICE_ID = "VRLogger_DeviceId";
+
+        // 자동 시청 시간 추적
+        private Dictionary<string, float> watchStartTimes = new Dictionary<string, float>();
+        private readonly object watchTimeLock = new object();
         #endregion
 
         #region Events
@@ -663,27 +667,73 @@ namespace VRLogDashboard
         }
 
         /// <summary>
-        /// 콘텐츠 시청 시작을 로그합니다.
+        /// 콘텐츠 시청 시작을 로그합니다. (자동 시청 시간 추적 시작)
         /// </summary>
         public async Task<bool> LogWatchStart(string contentId, string contentName)
         {
+            // 시청 시작 시간 기록 (자동 추적용)
+            lock (watchTimeLock)
+            {
+                watchStartTimes[contentId] = Time.realtimeSinceStartup;
+                LogDebug($"Watch start time recorded for {contentId}: {watchStartTimes[contentId]}");
+            }
+
             return await LogWatchEvent(contentId, contentName, "WATCH_START", 0);
         }
 
         /// <summary>
-        /// 콘텐츠 시청 종료를 로그합니다. (간편 메서드 - Fire and Forget)
+        /// 콘텐츠 시청 종료를 로그합니다. (자동 시간 계산 - Fire and Forget)
+        /// duration을 전달하지 않으면 LogWatchStart로부터 자동 계산됩니다.
+        /// </summary>
+        public void LogWatchEnd(string contentId, string contentName)
+        {
+            _ = LogWatchEndAsync(contentId, contentName);
+        }
+
+        /// <summary>
+        /// 콘텐츠 시청 종료를 로그합니다. (수동 duration 지정 - Fire and Forget)
         /// </summary>
         public void LogWatchEnd(string contentId, string contentName, float durationSeconds)
         {
-            // Fire and forget, but handle errors internally
             _ = LogWatchEndAsync(contentId, contentName, durationSeconds);
         }
 
         /// <summary>
-        /// 콘텐츠 시청 종료를 로그합니다. (async 버전)
+        /// 콘텐츠 시청 종료를 로그합니다. (자동 시간 계산 - async 버전)
+        /// LogWatchStart 호출 시점부터의 시간을 자동 계산합니다.
+        /// </summary>
+        public async Task<bool> LogWatchEndAsync(string contentId, string contentName)
+        {
+            float duration = 0;
+
+            lock (watchTimeLock)
+            {
+                if (watchStartTimes.TryGetValue(contentId, out float startTime))
+                {
+                    duration = Time.realtimeSinceStartup - startTime;
+                    watchStartTimes.Remove(contentId);
+                    LogDebug($"Auto-calculated watch duration for {contentId}: {duration}s");
+                }
+                else
+                {
+                    LogDebug($"No start time found for {contentId}, sending duration=0 (server will calculate)");
+                }
+            }
+
+            return await LogWatchEvent(contentId, contentName, "WATCH_END", duration);
+        }
+
+        /// <summary>
+        /// 콘텐츠 시청 종료를 로그합니다. (수동 duration 지정 - async 버전)
         /// </summary>
         public async Task<bool> LogWatchEndAsync(string contentId, string contentName, float durationSeconds)
         {
+            // 수동으로 duration을 전달하면 자동 추적 데이터 제거
+            lock (watchTimeLock)
+            {
+                watchStartTimes.Remove(contentId);
+            }
+
             return await LogWatchEvent(contentId, contentName, "WATCH_END", durationSeconds);
         }
 
