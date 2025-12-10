@@ -1104,6 +1104,8 @@ namespace VRLogDashboard
                             if (reloginSuccess)
                             {
                                 Log("Relogin successful, session will be restarted automatically");
+                                // 대기 중인 모든 요청의 session_id 업데이트
+                                UpdatePendingLogsSessionId(oldSessionId, currentSessionId);
                                 // 새 세션 ID로 요청 업데이트
                                 var updatedRequest = UpdateRequestSessionId(request, oldSessionId, currentSessionId);
                                 failedRequests.Add(updatedRequest);
@@ -1124,6 +1126,8 @@ namespace VRLogDashboard
                             if (sessionStarted)
                             {
                                 Log("Session restarted successfully, retrying failed request");
+                                // 대기 중인 모든 요청의 session_id 업데이트
+                                UpdatePendingLogsSessionId(oldSessionId, currentSessionId);
                                 // 새 세션 ID로 요청 업데이트
                                 var updatedRequest = UpdateRequestSessionId(request, oldSessionId, currentSessionId);
                                 failedRequests.Add(updatedRequest);
