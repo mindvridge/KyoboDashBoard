@@ -403,4 +403,21 @@ export class ContentLogModel {
     const rows = await query(sql, [deviceId]);
     return rows.length;
   }
+
+  /**
+   * 시간대별 콘텐츠 시청 분포 (오늘)
+   */
+  static async getHourlyWatchDistribution(date: Date) {
+    const sql = `
+      SELECT
+        EXTRACT(HOUR FROM timestamp AT TIME ZONE 'Asia/Seoul') as hour,
+        COUNT(*) as watch_count
+      FROM content_logs
+      WHERE DATE(timestamp AT TIME ZONE 'Asia/Seoul') = DATE($1 AT TIME ZONE 'Asia/Seoul')
+        AND action_type IN ('WATCH_START', 'WATCH_END')
+      GROUP BY EXTRACT(HOUR FROM timestamp AT TIME ZONE 'Asia/Seoul')
+      ORDER BY hour
+    `;
+    return query(sql, [date]);
+  }
 }

@@ -17,10 +17,10 @@ interface SessionChartProps {
   title?: string;
 }
 
-export function SessionChart({ data, title = '시간대별 세션 현황' }: SessionChartProps) {
+export function SessionChart({ data, title = '시간대별 콘텐츠 시청 현황' }: SessionChartProps) {
   const chartData = data.map((item) => ({
     hour: `${item.hour}시`,
-    sessions: item.session_count,
+    views: item.session_count,
   }));
 
   return (
@@ -33,9 +33,9 @@ export function SessionChart({ data, title = '시간대별 세션 현황' }: Ses
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData}>
               <defs>
-                <linearGradient id="colorSessions" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0} />
+                <linearGradient id="colorViews" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -58,14 +58,14 @@ export function SessionChart({ data, title = '시간대별 세션 현황' }: Ses
                   borderRadius: '8px',
                   boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
                 }}
-                formatter={(value: number) => [`${value}개`, '세션']}
+                formatter={(value: number) => [`${value}회`, '시청']}
               />
               <Area
                 type="monotone"
-                dataKey="sessions"
-                stroke="#0ea5e9"
+                dataKey="views"
+                stroke="#22c55e"
                 strokeWidth={2}
-                fill="url(#colorSessions)"
+                fill="url(#colorViews)"
               />
             </AreaChart>
           </ResponsiveContainer>

@@ -22,13 +22,13 @@ export class StatsService {
       todaySessionCount,
       totalWatchTime,
       popularContents,
-      hourlyDistribution,
+      hourlyWatchDistribution,
     ] = await Promise.all([
       SessionModel.getActiveSessionCount(),
       SessionModel.getTodaySessionCount(),
       ContentLogModel.getTotalWatchTimeToday(),
       ContentLogModel.getPopularContents(today, tomorrow, 10),
-      SessionModel.getHourlySessionDistribution(today),
+      ContentLogModel.getHourlyWatchDistribution(today),
     ]);
 
     const stats: DashboardStats = {
@@ -42,10 +42,10 @@ export class StatsService {
         total_watch_time: parseInt(c.total_watch_time || '0', 10),
       })),
       hourly_sessions: Array.from({ length: 24 }, (_, hour) => {
-        const found = (hourlyDistribution as Array<{ hour: string; session_count: string }>).find(h => parseInt(h.hour, 10) === hour);
+        const found = (hourlyWatchDistribution as Array<{ hour: string; watch_count: string }>).find(h => parseInt(h.hour, 10) === hour);
         return {
           hour,
-          session_count: found ? parseInt(found.session_count, 10) : 0,
+          session_count: found ? parseInt(found.watch_count, 10) : 0,
         };
       }),
     };
