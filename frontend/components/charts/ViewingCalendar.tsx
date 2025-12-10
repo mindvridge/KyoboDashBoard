@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { statsApi } from '@/utils/api';
+import { formatDuration } from '@/utils/format';
 import { ChevronLeft, ChevronRight, Calendar, Monitor, Clock, Video, PlayCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
@@ -165,11 +166,8 @@ export function ViewingCalendar() {
       return '0초';
     }
     
-    if (sec < 60) return `${Math.floor(sec)}초`;
-    if (sec < 3600) return `${Math.floor(sec / 60)}분`;
-    const hours = Math.floor(sec / 3600);
-    const mins = Math.floor((sec % 3600) / 60);
-    return `${hours}시간 ${mins}분`;
+    // formatDuration 함수 사용 (초 단위까지 정확하게 표시)
+    return formatDuration(Math.floor(sec));
   };
 
   const handlePrevMonth = () => {
