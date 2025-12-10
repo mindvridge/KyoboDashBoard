@@ -153,11 +153,22 @@ export function ViewingCalendar() {
     return 'bg-green-500';
   };
 
-  const formatWatchTime = (seconds: number): string => {
-    if (seconds < 60) return `${seconds}초`;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}분`;
-    const hours = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
+  const formatWatchTime = (seconds: number | null | undefined): string => {
+    // 유효하지 않은 값 처리
+    if (seconds == null || isNaN(seconds) || seconds < 0) {
+      return '0초';
+    }
+    
+    // 숫자로 변환 (문자열일 경우 대비)
+    const sec = typeof seconds === 'string' ? parseFloat(seconds) : seconds;
+    if (isNaN(sec) || sec < 0) {
+      return '0초';
+    }
+    
+    if (sec < 60) return `${Math.floor(sec)}초`;
+    if (sec < 3600) return `${Math.floor(sec / 60)}분`;
+    const hours = Math.floor(sec / 3600);
+    const mins = Math.floor((sec % 3600) / 60);
     return `${hours}시간 ${mins}분`;
   };
 
@@ -317,10 +328,27 @@ export function ViewingCalendar() {
                   </h4>
                   <div className="space-y-2">
                     {dailyDetail.content_stats.map((content, index) => {
-                      const time = new Date(content.timestamp);
-                      const timeStr = format(time, 'a h시 mm분', { locale: ko });
+                      // 타임스탬프 안전하게 파싱
+                      let timeStr = '-';
+                      try {
+                        if (content.timestamp) {
+                          const time = new Date(content.timestamp);
+                          if (!isNaN(time.getTime())) {
+                            timeStr = format(time, 'a h시 mm분', { locale: ko });
+                          }
+                        }
+                      } catch (error) {
+                        console.error('Failed to parse timestamp:', error);
+                      }
+                      
                       const isWatchEnd = content.action_type === 'WATCH_END';
-                      const cappedDuration = Math.min(content.duration || 0, 1200);
+                      // duration을 안전하게 숫자로 변환
+                      const duration = typeof content.duration === 'number' 
+                        ? content.duration 
+                        : typeof content.duration === 'string' 
+                        ? parseFloat(content.duration) 
+                        : 0;
+                      const cappedDuration = Math.min(isNaN(duration) ? 0 : duration, 1200);
 
                       return (
                         <div
@@ -366,19 +394,28 @@ export function ViewingCalendar() {
                           {device.device_info}
                         </div>
                         <div className="space-y-1">
-                          {device.contents.map((content) => (
-                            <div
-                              key={content.content_id}
-                              className="flex items-center justify-between text-xs"
-                            >
-                              <span className="truncate max-w-[180px] text-gray-600">
-                                {content.content_name}
-                              </span>
-                              <span className="text-green-600">
-                                {formatWatchTime(content.total_watch_time)}
-                              </span>
-                            </div>
-                          ))}
+                          {device.contents.map((content) => {
+                            // total_watch_time을 안전하게 숫자로 변환
+                            const watchTime = typeof content.total_watch_time === 'number'
+                              ? content.total_watch_time
+                              : typeof content.total_watch_time === 'string'
+                              ? parseFloat(content.total_watch_time)
+                              : 0;
+                            
+                            return (
+                              <div
+                                key={content.content_id}
+                                className="flex items-center justify-between text-xs"
+                              >
+                                <span className="truncate max-w-[180px] text-gray-600">
+                                  {content.content_name}
+                                </span>
+                                <span className="text-green-600">
+                                  {formatWatchTime(watchTime)}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
