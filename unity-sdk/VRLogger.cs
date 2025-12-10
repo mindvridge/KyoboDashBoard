@@ -306,8 +306,25 @@ namespace VRLogDashboard
             else
             {
                 // App resuming - validate and restore session
-                LogDebug("App resumed");
+                LogDebug("App resumed from pause");
                 _ = ResumeSessionAsync();
+            }
+        }
+
+        private void OnApplicationFocus(bool hasFocus)
+        {
+            // VR 헤드셋 수면 모드 대응 (OnApplicationPause가 호출되지 않는 경우)
+            if (hasFocus)
+            {
+                LogDebug("App gained focus (VR headset wake up)");
+                _ = ResumeSessionAsync();
+            }
+            else
+            {
+                // 포커스 잃음 - 세션 저장
+                SavePendingLogsToLocal();
+                SaveSessionToLocal();
+                LogDebug("App lost focus, session saved");
             }
         }
 
@@ -318,6 +335,8 @@ namespace VRLogDashboard
         {
             try
             {
+                string oldSessionId = currentSessionId;
+
                 if (IsLoggedIn && HasActiveSession)
                 {
                     // 세션이 있으면 유효성 검증
@@ -333,16 +352,22 @@ namespace VRLogDashboard
                     else
                     {
                         LogDebug("Session is invalid, restarting...");
+                        currentSessionId = null;
                     }
                 }
 
                 // 세션이 없거나 유효하지 않으면 재시작
                 if (IsLoggedIn)
                 {
-                    if (!HasActiveSession)
+                    bool sessionStarted = await StartSession();
+
+                    if (sessionStarted && !string.IsNullOrEmpty(oldSessionId))
                     {
-                        await StartSession();
+                        // 대기 중인 로그의 session_id 업데이트
+                        LogDebug($"Updating pending logs session_id: {oldSessionId} -> {currentSessionId}");
+                        UpdatePendingLogsSessionId(oldSessionId, currentSessionId);
                     }
+
                     _ = RetryPendingLogs();
                 }
                 else if (autoLogin)
@@ -353,6 +378,57 @@ namespace VRLogDashboard
             catch (Exception ex)
             {
                 LogError($"Session resume failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 대기 중인 모든 로그의 session_id를 새 세션 ID로 업데이트합니다.
+        /// </summary>
+        private void UpdatePendingLogsSessionId(string oldSessionId, string newSessionId)
+        {
+            if (string.IsNullOrEmpty(oldSessionId) || string.IsNullOrEmpty(newSessionId))
+                return;
+
+            try
+            {
+                // 메모리 큐의 요청 업데이트
+                lock (queueLock)
+                {
+                    if (pendingRequests.Count > 0)
+                    {
+                        var updatedQueue = new Queue<LogRequest>();
+                        while (pendingRequests.Count > 0)
+                        {
+                            var request = pendingRequests.Dequeue();
+                            var updated = UpdateRequestSessionId(request, oldSessionId, newSessionId);
+                            updatedQueue.Enqueue(updated);
+                        }
+
+                        while (updatedQueue.Count > 0)
+                        {
+                            pendingRequests.Enqueue(updatedQueue.Dequeue());
+                        }
+
+                        LogDebug($"Updated {pendingRequests.Count} pending requests in memory");
+                    }
+                }
+
+                // 로컬 저장소의 요청도 업데이트
+                var localLogs = LoadLocalLogFile();
+                if (localLogs.requests.Count > 0)
+                {
+                    for (int i = 0; i < localLogs.requests.Count; i++)
+                    {
+                        localLogs.requests[i] = UpdateRequestSessionId(
+                            localLogs.requests[i], oldSessionId, newSessionId);
+                    }
+                    SaveLocalLogFile(localLogs);
+                    LogDebug($"Updated {localLogs.requests.Count} pending requests in local storage");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to update pending logs session_id: {ex.Message}");
             }
         }
 
