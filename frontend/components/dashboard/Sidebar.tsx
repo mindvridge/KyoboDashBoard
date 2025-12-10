@@ -33,7 +33,7 @@ export function Sidebar() {
           <div className="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center">
             <span className="text-white font-bold text-lg">VR</span>
           </div>
-          <span className="text-white font-semibold text-lg">로그 대시보드</span>
+          <span className="text-white font-semibold text-lg">교보 VR</span>
         </div>
       </div>
 

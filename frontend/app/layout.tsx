@@ -6,8 +6,8 @@ import { Providers } from '@/components/providers/Providers';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'VR 로그 대시보드',
-  description: 'VR 기기 로그 수집 및 분석 시스템',
+  title: '교보 VR 시청 대시보드',
+  description: '교보 VR 콘텐츠 시청 현황 대시보드',
 };
 
 export default function RootLayout({
