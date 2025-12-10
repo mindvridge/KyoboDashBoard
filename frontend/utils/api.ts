@@ -31,7 +31,8 @@ export async function fetchApi<T>(
 
   if (!response.ok) {
     // 401 Unauthorized - 토큰 만료 또는 유효하지 않음
-    if (response.status === 401) {
+    // 단, 로그인 API는 제외 (로그인 실패 시 에러 메시지 표시 필요)
+    if (response.status === 401 && !endpoint.includes('/auth/login')) {
       handleUnauthorized();
     }
     const error = await response.json().catch(() => ({}));

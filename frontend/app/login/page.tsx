@@ -39,9 +39,13 @@ export default function LoginPage() {
 
         // Redirect to dashboard
         router.push('/');
+      } else {
+        // API returned success: false
+        setError((response as any).error?.message || '로그인에 실패했습니다.');
       }
     } catch (err: any) {
-      setError(err.message || '로그인에 실패했습니다.');
+      console.error('Login error:', err);
+      setError(err.message || '로그인에 실패했습니다. 서버 연결을 확인해주세요.');
     } finally {
       setIsLoading(false);
     }
