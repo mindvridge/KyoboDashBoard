@@ -610,20 +610,15 @@ namespace VRLogDashboard
         /// </summary>
         public void LogContentSelect(int contentId)
         {
-            LogDebug($"=== LogContentSelect Called ===");
-            LogDebug($"Content ID: {contentId}");
-
             currentVideoID = contentId;
             var videoInfo = GetVideoFileNameByID();
 
             if (videoInfo != null)
             {
-                LogDebug($"Video Info Found: {videoInfo.title}");
                 _ = LogContentSelectAsync(contentId.ToString(), videoInfo.title);
             }
             else
             {
-                LogDebug($"Video Info Not Found, using contentId as name");
                 _ = LogContentSelectAsync(contentId.ToString(), contentId.ToString());
             }
         }
@@ -633,12 +628,6 @@ namespace VRLogDashboard
         /// </summary>
         public async Task<bool> LogContentSelectAsync(string contentId, string contentName, Dictionary<string, object> metadata = null)
         {
-            LogDebug($"=== LogContentSelectAsync ===");
-            LogDebug($"Content ID: {contentId}, Name: {contentName}");
-            LogDebug($"Has Active Session: {HasActiveSession}");
-            LogDebug($"Current Session ID: {currentSessionId}");
-            LogDebug($"Is Logged In: {IsLoggedIn}");
-
             if (!HasActiveSession)
             {
                 LogError("Cannot log: No active session");
@@ -652,10 +641,7 @@ namespace VRLogDashboard
                 content_name = contentName
             };
 
-            var requestJson = JsonUtility.ToJson(request);
-            LogDebug($"Request JSON: {requestJson}");
-
-            return await QueueRequest("/api/logs/content-select", requestJson);
+            return await QueueRequest("/api/logs/content-select", JsonUtility.ToJson(request));
         }
 
         /// <summary>
@@ -675,7 +661,6 @@ namespace VRLogDashboard
             lock (watchTimeLock)
             {
                 watchStartTimes[contentId] = Time.realtimeSinceStartup;
-                LogDebug($"Watch start time recorded for {contentId}: {watchStartTimes[contentId]}");
             }
 
             return await LogWatchEvent(contentId, contentName, "WATCH_START", 0);
@@ -712,11 +697,6 @@ namespace VRLogDashboard
                 {
                     duration = Time.realtimeSinceStartup - startTime;
                     watchStartTimes.Remove(contentId);
-                    LogDebug($"Auto-calculated watch duration for {contentId}: {duration}s");
-                }
-                else
-                {
-                    LogDebug($"No start time found for {contentId}, sending duration=0 (server will calculate)");
                 }
             }
 
@@ -988,9 +968,6 @@ namespace VRLogDashboard
 
         private async Task<bool> QueueRequest(string endpoint, string jsonBody)
         {
-            LogDebug($"=== QueueRequest ===");
-            LogDebug($"Endpoint: {endpoint}");
-
             var koreanTime = DateTime.UtcNow + KoreanTimeOffset;
             var logRequest = new LogRequest
             {
@@ -1004,7 +981,6 @@ namespace VRLogDashboard
             if (enableDailyLogArchive)
             {
                 SaveToDailyLog(logRequest, koreanTime);
-                LogDebug("Saved to daily log archive");
             }
 
             bool shouldProcessQueue = false;
@@ -1023,19 +999,12 @@ namespace VRLogDashboard
                 }
             }
 
-            LogDebug($"Added to queue. Queue size: {queueSize}, Should process: {shouldProcessQueue}");
-
             OnPendingLogsChanged?.Invoke(GetPendingLogCount());
 
             // lock 외부에서 ProcessQueue 호출 (데드락 방지)
             if (shouldProcessQueue)
             {
-                LogDebug("Starting ProcessQueue...");
                 await ProcessQueue();
-            }
-            else
-            {
-                LogDebug("Queue is already being processed");
             }
 
             return true;
@@ -1266,9 +1235,6 @@ namespace VRLogDashboard
         {
             var url = serverUrl + endpoint;
 
-            LogDebug($"POST Request to: {url}");
-            LogDebug($"Authenticated: {authenticated}, HasToken: {!string.IsNullOrEmpty(authToken)}");
-
             using (var request = new UnityWebRequest(url, "POST"))
             {
                 byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
@@ -1288,7 +1254,6 @@ namespace VRLogDashboard
                     request.SetRequestHeader("Authorization", $"Bearer {authToken}");
                 }
 
-                LogDebug($"Sending request...");
                 var operation = request.SendWebRequest();
 
                 // Unity 메인 스레드 안전성을 위한 타임아웃 처리
@@ -1307,8 +1272,6 @@ namespace VRLogDashboard
                         throw new Exception($"Request timeout after {requestTimeout} seconds");
                     }
                 }
-
-                LogDebug($"Request completed. Status: {request.result}, ResponseCode: {request.responseCode}");
 
                 if (request.result == UnityWebRequest.Result.Success)
                 {
