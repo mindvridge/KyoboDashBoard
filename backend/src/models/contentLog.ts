@@ -42,16 +42,31 @@ export class ContentLogModel {
 
   /**
    * 특정 세션과 콘텐츠의 마지막 WATCH_START 이벤트를 찾습니다.
+   * 같은 세션에서 못 찾으면 최근 1시간 내 모든 세션에서 검색합니다.
    */
   static async findLastWatchStart(sessionId: string, contentId: string): Promise<ContentLog | null> {
-    const sql = `
+    // 1. 먼저 같은 세션에서 검색
+    const sameSessionSql = `
       SELECT * FROM content_logs
       WHERE session_id = $1 AND content_id = $2 AND action_type = 'WATCH_START'
       ORDER BY timestamp DESC
       LIMIT 1
     `;
-    const rows = await query<ContentLog>(sql, [sessionId, contentId]);
-    return rows[0] || null;
+    const sameSessionRows = await query<ContentLog>(sameSessionSql, [sessionId, contentId]);
+    if (sameSessionRows[0]) {
+      return sameSessionRows[0];
+    }
+
+    // 2. 같은 세션에서 못 찾으면 최근 1시간 내 모든 세션에서 검색
+    const recentSql = `
+      SELECT * FROM content_logs
+      WHERE content_id = $1 AND action_type = 'WATCH_START'
+        AND timestamp >= NOW() - INTERVAL '1 hour'
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `;
+    const recentRows = await query<ContentLog>(recentSql, [contentId]);
+    return recentRows[0] || null;
   }
 
   static async getRecentLogs(limit = 50): Promise<ContentLog[]> {
@@ -135,7 +150,7 @@ export class ContentLogModel {
         cl.content_id,
         cl.content_name,
         COUNT(CASE WHEN cl.action_type = 'SELECT' THEN 1 END) as view_count,
-        COALESCE(SUM(CASE WHEN cl.action_type = 'WATCH_END' THEN LEAST(cl.duration, 1200) ELSE 0 END), 0) as total_watch_time
+        COALESCE(SUM(CASE WHEN cl.action_type = 'WATCH_END' THEN LEAST(cl.duration, 1800) ELSE 0 END), 0) as total_watch_time
       FROM content_logs cl
       WHERE DATE(cl.timestamp AT TIME ZONE 'Asia/Seoul') = DATE($1 AT TIME ZONE 'Asia/Seoul')
       GROUP BY cl.content_id, cl.content_name
@@ -155,7 +170,7 @@ export class ContentLogModel {
         cl.content_id,
         cl.content_name,
         COUNT(CASE WHEN cl.action_type = 'SELECT' THEN 1 END) as view_count,
-        COALESCE(SUM(CASE WHEN cl.action_type = 'WATCH_END' THEN LEAST(cl.duration, 1200) ELSE 0 END), 0) as total_watch_time,
+        COALESCE(SUM(CASE WHEN cl.action_type = 'WATCH_END' THEN LEAST(cl.duration, 1800) ELSE 0 END), 0) as total_watch_time,
         MIN(cl.timestamp) as first_view,
         MAX(cl.timestamp) as last_view
       FROM content_logs cl
@@ -177,7 +192,7 @@ export class ContentLogModel {
         DATE(cl.timestamp AT TIME ZONE 'Asia/Seoul') as date,
         COUNT(DISTINCT d.id) as device_count,
         COUNT(DISTINCT cl.content_id) as content_count,
-        COALESCE(SUM(CASE WHEN cl.action_type = 'WATCH_END' THEN LEAST(cl.duration, 1200) ELSE 0 END), 0) as total_watch_time
+        COALESCE(SUM(CASE WHEN cl.action_type = 'WATCH_END' THEN LEAST(cl.duration, 1800) ELSE 0 END), 0) as total_watch_time
       FROM content_logs cl
       JOIN sessions s ON cl.session_id = s.id
       JOIN devices d ON s.device_id = d.id

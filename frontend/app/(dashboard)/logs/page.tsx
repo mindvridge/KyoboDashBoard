@@ -21,7 +21,7 @@ const actionColors: Record<string, 'default' | 'success' | 'warning' | 'info'> =
   WATCH_RESUME: 'success',
 };
 
-const MAX_WATCH_TIME = 20 * 60; // 20분 (초)
+const MAX_WATCH_TIME = 30 * 60; // 30분 (초)
 
 
 export default function LogsPage() {

@@ -75,16 +75,23 @@ export class ContentLogService {
       if (watchStart && watchStart.timestamp) {
         const startTime = new Date(watchStart.timestamp).getTime();
         const endTime = Date.now();
-        calculatedDuration = Math.floor((endTime - startTime) / 1000); // 초 단위
+        const rawDuration = Math.floor((endTime - startTime) / 1000); // 초 단위
 
-        // 최대 20분(1200초)으로 제한
-        calculatedDuration = Math.min(calculatedDuration, 1200);
+        // 최대 30분(1800초)으로 제한, 음수 방지
+        calculatedDuration = Math.max(0, Math.min(rawDuration, 1800));
 
         logger.info('Calculated watch duration from timestamps', {
           session_id: sessionId,
           content_id: contentId,
+          watch_start_session: watchStart.session_id,
           start_time: watchStart.timestamp,
+          raw_duration: rawDuration,
           calculated_duration: calculatedDuration,
+        });
+      } else {
+        logger.warn('No WATCH_START found for duration calculation', {
+          session_id: sessionId,
+          content_id: contentId,
         });
       }
     }
