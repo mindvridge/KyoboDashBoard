@@ -40,9 +40,13 @@ export function RecentLogs() {
 
     const fetchLogs = async () => {
       try {
-        const response = await logsApi.getRecent(20);
+        const response = await logsApi.getRecent(30);
         if (response.success) {
-          setLogs(response.data);
+          // SELECT 로그 제외 (WATCH_START, WATCH_END, WATCH_PAUSE, WATCH_RESUME만 표시)
+          const filteredLogs = response.data
+            .filter((log: ContentLog) => log.action_type !== 'SELECT')
+            .slice(0, 20);
+          setLogs(filteredLogs);
         }
       } catch {
         // Error handled silently

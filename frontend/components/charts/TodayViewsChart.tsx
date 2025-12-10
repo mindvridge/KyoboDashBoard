@@ -41,9 +41,9 @@ export function TodayViewsChart({ title = '오늘 시청 현황' }: TodayViewsCh
         });
 
         if (result.success) {
-          // Filter to show only SELECT and WATCH_END actions
+          // Filter to show only WATCH_START and WATCH_END actions (exclude SELECT)
           const viewLogs = result.data
-            .filter((log: ViewLog) => ['SELECT', 'WATCH_END'].includes(log.action_type))
+            .filter((log: ViewLog) => ['WATCH_START', 'WATCH_END'].includes(log.action_type))
             .slice(0, 10);
           setLogs(viewLogs);
         }
@@ -121,11 +121,11 @@ export function TodayViewsChart({ title = '오늘 시청 현황' }: TodayViewsCh
                 className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <div className={`p-2 rounded-lg ${
-                  log.action_type === 'SELECT'
+                  log.action_type === 'WATCH_START'
                     ? 'bg-blue-100 text-blue-600'
                     : 'bg-green-100 text-green-600'
                 }`}>
-                  {log.action_type === 'SELECT' ? (
+                  {log.action_type === 'WATCH_START' ? (
                     <PlayCircle className="w-4 h-4" />
                   ) : (
                     <Clock className="w-4 h-4" />
@@ -152,11 +152,11 @@ export function TodayViewsChart({ title = '오늘 시청 현황' }: TodayViewsCh
                   </div>
                 </div>
                 <span className={`text-xs px-2 py-1 rounded-full ${
-                  log.action_type === 'SELECT'
+                  log.action_type === 'WATCH_START'
                     ? 'bg-blue-100 text-blue-700'
                     : 'bg-green-100 text-green-700'
                 }`}>
-                  {log.action_type === 'SELECT' ? '선택' : '완료'}
+                  {log.action_type === 'WATCH_START' ? '시작' : '완료'}
                 </span>
               </div>
             ))}
