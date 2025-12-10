@@ -22,6 +22,10 @@ async function bootstrap() {
     const app = express();
     const server = http.createServer(app);
 
+    // Trust proxy (required for Railway, Heroku, etc.)
+    // This allows express-rate-limit to correctly identify users behind proxies
+    app.set('trust proxy', 1);
+
     // CORS
     // Manual CORS handler with security restrictions
     app.use((req, res, next) => {
