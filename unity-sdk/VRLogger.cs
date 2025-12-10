@@ -105,7 +105,7 @@ namespace VRLogDashboard
         private const string PREF_DEVICE_ID = "VRLogger_DeviceId";
 
         // 시청 시간 추적
-        private Dictionary<string, float> watchStartTimes = new Dictionary<string, float>();
+        private float watchStartTime = 0f;
 
         #endregion
 
@@ -658,7 +658,7 @@ namespace VRLogDashboard
         public async Task<bool> LogWatchStart(string contentId, string contentName)
         {
             // 시청 시작 시간 기록
-            watchStartTimes[contentId] = Time.realtimeSinceStartup;
+            watchStartTime = Time.realtimeSinceStartup;
             return await LogWatchEvent(contentId, contentName, "WATCH_START", 0);
         }
 
@@ -678,10 +678,10 @@ namespace VRLogDashboard
         public async Task<bool> LogWatchEndAsync(string contentId, string contentName)
         {
             float duration = 0;
-            if (watchStartTimes.TryGetValue(contentId, out float startTime))
+            if (watchStartTime > 0)
             {
-                duration = Time.realtimeSinceStartup - startTime;
-                watchStartTimes.Remove(contentId);
+                duration = Time.realtimeSinceStartup - watchStartTime;
+                watchStartTime = 0f;
             }
             return await LogWatchEvent(contentId, contentName, "WATCH_END", duration);
         }
