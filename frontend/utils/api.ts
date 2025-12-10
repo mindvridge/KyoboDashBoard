@@ -115,7 +115,13 @@ export const statsApi = {
     return fetchApiAuth<{
       success: boolean;
       date: string;
-      content_stats: Array<{ content_id: string; content_name: string; view_count: number; total_watch_time: number }>;
+      content_stats: Array<{
+        content_id: string;
+        content_name: string;
+        action_type: string;
+        timestamp: string;
+        duration: number;
+      }>;
       device_viewings: Array<{
         device_id: string;
         device_info: string;
