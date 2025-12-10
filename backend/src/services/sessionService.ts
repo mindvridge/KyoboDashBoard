@@ -102,9 +102,8 @@ export class SessionService {
       throw new NotFoundError('Failed to end session');
     }
 
-    // Get content count for this session
-    const logs = await ContentLogModel.findBySessionId(sessionId);
-    const contentCount = new Set(logs.map(l => l.content_id)).size;
+    // Get content count for this session using COUNT(DISTINCT) for better performance
+    const contentCount = await ContentLogModel.getUniqueContentCount(sessionId);
 
     // Invalidate cache
     await cacheInvalidatePattern('stats:*');

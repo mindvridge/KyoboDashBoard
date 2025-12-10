@@ -41,32 +41,40 @@ export class ContentLogModel {
   }
 
   /**
+   * 세션의 고유 콘텐츠 수를 COUNT(DISTINCT)로 효율적으로 조회
+   * 모든 로그를 가져와서 Set으로 카운트하는 것보다 성능이 좋음
+   */
+  static async getUniqueContentCount(sessionId: string): Promise<number> {
+    const sql = 'SELECT COUNT(DISTINCT content_id) as count FROM content_logs WHERE session_id = $1';
+    const rows = await query<{ count: string }>(sql, [sessionId]);
+    return parseInt(rows[0]?.count || '0', 10);
+  }
+
+  /**
    * 특정 세션과 콘텐츠의 마지막 WATCH_START 이벤트를 찾습니다.
-   * 같은 세션에서 못 찾으면 최근 1시간 내 모든 세션에서 검색합니다.
+   * 단일 쿼리로 최적화: 같은 세션 우선, 없으면 최근 1시간 내 검색
+   * 인덱스 사용: idx_content_logs_session_content_action, idx_content_logs_content_action_timestamp
    */
   static async findLastWatchStart(sessionId: string, contentId: string): Promise<ContentLog | null> {
-    // 1. 먼저 같은 세션에서 검색
-    const sameSessionSql = `
-      SELECT * FROM content_logs
-      WHERE session_id = $1 AND content_id = $2 AND action_type = 'WATCH_START'
-      ORDER BY timestamp DESC
+    // 단일 쿼리로 최적화: 같은 세션 결과를 우선 정렬
+    const sql = `
+      SELECT *,
+        CASE WHEN session_id = $1 THEN 0 ELSE 1 END as priority
+      FROM content_logs
+      WHERE content_id = $2
+        AND action_type = 'WATCH_START'
+        AND (session_id = $1 OR timestamp >= NOW() - INTERVAL '1 hour')
+      ORDER BY priority, timestamp DESC
       LIMIT 1
     `;
-    const sameSessionRows = await query<ContentLog>(sameSessionSql, [sessionId, contentId]);
-    if (sameSessionRows[0]) {
-      return sameSessionRows[0];
-    }
+    const rows = await query<ContentLog & { priority: number }>(sql, [sessionId, contentId]);
 
-    // 2. 같은 세션에서 못 찾으면 최근 1시간 내 모든 세션에서 검색
-    const recentSql = `
-      SELECT * FROM content_logs
-      WHERE content_id = $1 AND action_type = 'WATCH_START'
-        AND timestamp >= NOW() - INTERVAL '1 hour'
-      ORDER BY timestamp DESC
-      LIMIT 1
-    `;
-    const recentRows = await query<ContentLog>(recentSql, [contentId]);
-    return recentRows[0] || null;
+    if (rows[0]) {
+      // priority 필드 제거 후 반환
+      const { priority, ...contentLog } = rows[0];
+      return contentLog as ContentLog;
+    }
+    return null;
   }
 
   static async getRecentLogs(limit = 50): Promise<ContentLog[]> {
