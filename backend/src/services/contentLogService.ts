@@ -78,8 +78,8 @@ export class ContentLogService {
         const endTime = Date.now();
         const rawDuration = Math.floor((endTime - startTime) / 1000); // 초 단위
 
-        // 최대 30분(1800초)으로 제한, 음수 방지
-        calculatedDuration = Math.max(0, Math.min(rawDuration, 1800));
+        // 최대 20분(1200초)으로 제한, 음수 방지
+        calculatedDuration = Math.max(0, Math.min(rawDuration, 1200));
 
         logger.info('Calculated watch duration from server timestamps', {
           session_id: sessionId,
@@ -93,7 +93,7 @@ export class ContentLogService {
       } else {
         // WATCH_START를 못 찾으면 클라이언트 값 사용 (fallback)
         if (duration && duration > 0) {
-          calculatedDuration = Math.min(duration, 1800);
+          calculatedDuration = Math.min(duration, 1200);
           logger.warn('Using client duration (no WATCH_START found)', {
             session_id: sessionId,
             content_id: contentId,

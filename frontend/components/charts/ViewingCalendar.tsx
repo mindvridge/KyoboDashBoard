@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { statsApi } from '@/utils/api';
-import { ChevronLeft, ChevronRight, Calendar, Monitor, Clock, Video } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, Monitor, Clock, Video, PlayCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,15 +19,22 @@ interface DayStat {
 interface ContentStat {
   content_id: string;
   content_name: string;
-  watch_start_count: number;
-  watch_end_count: number;
+  action_type: string;
+  timestamp: string;
+  duration: number;
+}
+
+interface DeviceContent {
+  content_id: string;
+  content_name: string;
+  view_count: number;
   total_watch_time: number;
 }
 
 interface DeviceViewing {
   device_id: string;
   device_info: string;
-  contents: ContentStat[];
+  contents: DeviceContent[];
 }
 
 interface DailyDetail {
@@ -309,21 +316,38 @@ export function ViewingCalendar() {
                     콘텐츠별 시청 시간
                   </h4>
                   <div className="space-y-2">
-                    {dailyDetail.content_stats.map((content) => (
-                      <div
-                        key={content.content_id}
-                        className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
-                      >
-                        <span className="text-sm truncate max-w-[150px]">{content.content_name}</span>
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="text-blue-600">시작 {content.watch_start_count}</span>
-                          <span className="text-green-600">완료 {content.watch_end_count}</span>
-                          <span className="text-purple-600 font-medium">
-                            {formatWatchTime(content.total_watch_time)}
-                          </span>
+                    {dailyDetail.content_stats.map((content, index) => {
+                      const time = new Date(content.timestamp);
+                      const timeStr = format(time, 'a h시 mm분', { locale: ko });
+                      const isWatchEnd = content.action_type === 'WATCH_END';
+                      const cappedDuration = Math.min(content.duration || 0, 1200);
+
+                      return (
+                        <div
+                          key={`${content.content_id}-${index}`}
+                          className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                        >
+                          <div className="flex items-center gap-2">
+                            {isWatchEnd ? (
+                              <Clock className="w-4 h-4 text-green-500" />
+                            ) : (
+                              <PlayCircle className="w-4 h-4 text-blue-500" />
+                            )}
+                            <span className="text-sm truncate max-w-[120px]">{content.content_name}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-gray-500">{timeStr}</span>
+                            {isWatchEnd ? (
+                              <span className="text-green-600 font-medium">
+                                ({formatWatchTime(cappedDuration)})
+                              </span>
+                            ) : (
+                              <span className="text-blue-600">시작</span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

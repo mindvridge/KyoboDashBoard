@@ -143,20 +143,20 @@ export class ContentLogModel {
 
   /**
    * 특정 날짜의 콘텐츠별 시청 통계 (대시보드 캘린더용)
+   * 개별 시청 기록 반환 (시간, 시청시간 포함)
    */
   static async getDailyContentStats(date: Date) {
     const sql = `
       SELECT
         cl.content_id,
         cl.content_name,
-        COUNT(CASE WHEN cl.action_type = 'WATCH_START' THEN 1 END) as watch_start_count,
-        COUNT(CASE WHEN cl.action_type = 'WATCH_END' THEN 1 END) as watch_end_count,
-        COALESCE(SUM(CASE WHEN cl.action_type = 'WATCH_END' THEN LEAST(cl.duration, 1800) ELSE 0 END), 0) as total_watch_time
+        cl.action_type,
+        cl.timestamp,
+        LEAST(cl.duration, 1200) as duration
       FROM content_logs cl
       WHERE DATE(cl.timestamp AT TIME ZONE 'Asia/Seoul') = DATE($1 AT TIME ZONE 'Asia/Seoul')
         AND cl.action_type IN ('WATCH_START', 'WATCH_END')
-      GROUP BY cl.content_id, cl.content_name
-      ORDER BY total_watch_time DESC
+      ORDER BY cl.timestamp DESC
     `;
     return query(sql, [date]);
   }
@@ -172,7 +172,7 @@ export class ContentLogModel {
         cl.content_id,
         cl.content_name,
         COUNT(CASE WHEN cl.action_type = 'SELECT' THEN 1 END) as view_count,
-        COALESCE(SUM(CASE WHEN cl.action_type = 'WATCH_END' THEN LEAST(cl.duration, 1800) ELSE 0 END), 0) as total_watch_time,
+        COALESCE(SUM(CASE WHEN cl.action_type = 'WATCH_END' THEN LEAST(cl.duration, 1200) ELSE 0 END), 0) as total_watch_time,
         MIN(cl.timestamp) as first_view,
         MAX(cl.timestamp) as last_view
       FROM content_logs cl
@@ -194,7 +194,7 @@ export class ContentLogModel {
         DATE(cl.timestamp AT TIME ZONE 'Asia/Seoul') as date,
         COUNT(DISTINCT d.id) as device_count,
         COUNT(DISTINCT cl.content_id) as content_count,
-        COALESCE(SUM(CASE WHEN cl.action_type = 'WATCH_END' THEN LEAST(cl.duration, 1800) ELSE 0 END), 0) as total_watch_time
+        COALESCE(SUM(CASE WHEN cl.action_type = 'WATCH_END' THEN LEAST(cl.duration, 1200) ELSE 0 END), 0) as total_watch_time
       FROM content_logs cl
       JOIN sessions s ON cl.session_id = s.id
       JOIN devices d ON s.device_id = d.id
