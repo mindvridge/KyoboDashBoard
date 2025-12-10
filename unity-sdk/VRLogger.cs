@@ -104,6 +104,9 @@ namespace VRLogDashboard
         private const string PREF_SESSION_TIMESTAMP = "VRLogger_SessionTimestamp";
         private const string PREF_DEVICE_ID = "VRLogger_DeviceId";
 
+        // 시청 시간 추적
+        private Dictionary<string, float> watchStartTimes = new Dictionary<string, float>();
+
         #endregion
 
         #region Events
@@ -654,12 +657,14 @@ namespace VRLogDashboard
         /// </summary>
         public async Task<bool> LogWatchStart(string contentId, string contentName)
         {
+            // 시청 시작 시간 기록
+            watchStartTimes[contentId] = Time.realtimeSinceStartup;
             return await LogWatchEvent(contentId, contentName, "WATCH_START", 0);
         }
 
         /// <summary>
         /// 콘텐츠 시청 종료를 로그합니다. (Fire and Forget)
-        /// 서버에서 WATCH_START 타임스탬프 기준으로 시청 시간을 계산합니다.
+        /// 클라이언트에서 시청 시간을 계산하여 전송, 서버에서 재계산 후 참고용으로 사용
         /// </summary>
         public void LogWatchEnd(string contentId, string contentName)
         {
@@ -668,11 +673,17 @@ namespace VRLogDashboard
 
         /// <summary>
         /// 콘텐츠 시청 종료를 로그합니다. (async 버전)
-        /// 서버에서 WATCH_START 타임스탬프 기준으로 시청 시간을 계산합니다.
+        /// 클라이언트에서 시청 시간을 계산하여 전송, 서버에서 재계산 후 참고용으로 사용
         /// </summary>
         public async Task<bool> LogWatchEndAsync(string contentId, string contentName)
         {
-            return await LogWatchEvent(contentId, contentName, "WATCH_END", 0);
+            float duration = 0;
+            if (watchStartTimes.TryGetValue(contentId, out float startTime))
+            {
+                duration = Time.realtimeSinceStartup - startTime;
+                watchStartTimes.Remove(contentId);
+            }
+            return await LogWatchEvent(contentId, contentName, "WATCH_END", duration);
         }
 
         /// <summary>
@@ -1462,29 +1473,6 @@ namespace VRLogDashboard
                 {
                     isReloginInProgress = false;
                 }
-            }
-        }
-
-        private IEnumerator EndSessionCoroutine(float lobbyTime)
-        {
-            if (!HasActiveSession) yield break;
-
-            var request = new SessionEndRequest
-            {
-                session_id = currentSessionId,
-                lobby_time = Mathf.RoundToInt(lobbyTime)
-            };
-
-            using (var webRequest = new UnityWebRequest(serverUrl + "/api/sessions/end", "POST"))
-            {
-                byte[] bodyRaw = Encoding.UTF8.GetBytes(JsonUtility.ToJson(request));
-                webRequest.uploadHandler = new UploadHandlerRaw(bodyRaw);
-                webRequest.downloadHandler = new DownloadHandlerBuffer();
-                webRequest.SetRequestHeader("Content-Type", "application/json");
-                webRequest.SetRequestHeader("Authorization", $"Bearer {authToken}");
-
-                yield return webRequest.SendWebRequest();
-                currentSessionId = null;
             }
         }
 
