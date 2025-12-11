@@ -252,13 +252,13 @@ export default function AnalyticsPage() {
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{index + 1}</td>
                         <td className="py-3 px-4 text-sm text-gray-900">{content.content_name}</td>
                         <td className="py-3 px-4 text-sm text-gray-600 text-right">
-                          {formatNumber(parseInt(content.view_count))}
+                          {formatNumber(content.view_count)}
                         </td>
                         <td className="py-3 px-4 text-sm text-gray-600 text-right">
-                          {formatDuration(parseInt(content.total_watch_time || 0))}
+                          {formatDuration(content.total_watch_time || 0)}
                         </td>
                         <td className="py-3 px-4 text-sm text-gray-600 text-right">
-                          {formatDuration(Math.round(parseFloat(content.avg_watch_time || 0)))}
+                          {formatDuration(Math.round(content.avg_watch_time || 0))}
                         </td>
                       </tr>
                     ))}

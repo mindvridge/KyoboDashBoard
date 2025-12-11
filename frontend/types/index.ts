@@ -72,6 +72,7 @@ export interface PopularContent {
   content_name: string;
   view_count: number;
   total_watch_time: number;
+  avg_watch_time?: number;
 }
 
 export interface SpaceStats {
