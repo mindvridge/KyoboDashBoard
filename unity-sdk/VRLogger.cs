@@ -143,6 +143,10 @@ namespace VRLogDashboard
         private bool isValidatingToken = false;
         private readonly object tokenValidationLock = new object();
 
+        // 세션 초기화 상태
+        private bool isSessionInitialized = false;
+        private bool isSessionInitializing = false;
+
         #endregion
 
         #region Events
@@ -168,6 +172,8 @@ namespace VRLogDashboard
         public bool IsSyncingOfflineLogs => isSyncingOfflineLogs;
         public bool IsTokenValid => isTokenValid;
         public DateTime? LastTokenValidation => lastTokenValidation;
+        public bool IsSessionInitialized => isSessionInitialized;
+        public bool IsSessionInitializing => isSessionInitializing;
         public string ServerUrl
         {
             get => serverUrl;
@@ -286,6 +292,15 @@ namespace VRLogDashboard
         /// </summary>
         private async Task InitializeSessionAsync()
         {
+            if (isSessionInitializing)
+            {
+                LogDebug("Session initialization already in progress, skipping...");
+                return;
+            }
+
+            isSessionInitializing = true;
+            Log("🚀 Session initialization started...");
+
             try
             {
                 // 1. 저장된 세션 로드 시도
@@ -294,6 +309,7 @@ namespace VRLogDashboard
                 if (sessionLoaded)
                 {
                     LogDebug("Saved session loaded, validating...");
+                    Log($"📋 Loaded session: authToken={!string.IsNullOrEmpty(authToken)}, sessionId={currentSessionId ?? "null"}");
 
                     // 2. 저장된 세션 유효성 검증
                     bool isValid = await ValidateSavedSession();
@@ -302,6 +318,8 @@ namespace VRLogDashboard
                     {
                         // 3. 세션이 유효하면 그대로 사용
                         LogDebug("✅ Using saved session");
+                        Log($"✅ Session initialized successfully: sessionId={currentSessionId}");
+                        isSessionInitialized = true;
                         OnLoginComplete?.Invoke(true);
                         OnSessionStarted?.Invoke(currentSessionId);
 
@@ -328,22 +346,45 @@ namespace VRLogDashboard
                 {
                     LogDebug("Starting new login process...");
                     await AutoLogin();
+
+                    if (HasActiveSession)
+                    {
+                        isSessionInitialized = true;
+                        Log($"✅ Session initialized via AutoLogin: sessionId={currentSessionId}");
+                    }
+                    else
+                    {
+                        Log("⚠️ Session initialization via AutoLogin failed - no active session");
+                    }
                 }
                 else
                 {
                     LogDebug("AutoLogin disabled");
+                    Log("⚠️ AutoLogin disabled - session not initialized");
                 }
             }
             catch (Exception ex)
             {
                 LogError($"Session initialization failed: {ex.Message}");
+                Log($"❌ Session initialization error: {ex.Message}");
 
                 // 실패 시 새로 로그인 시도
                 if (autoLogin)
                 {
                     LogDebug("Retrying with new login...");
                     await AutoLogin();
+
+                    if (HasActiveSession)
+                    {
+                        isSessionInitialized = true;
+                        Log($"✅ Session initialized via retry: sessionId={currentSessionId}");
+                    }
                 }
+            }
+            finally
+            {
+                isSessionInitializing = false;
+                Log($"🏁 Session initialization completed: initialized={isSessionInitialized}, hasSession={HasActiveSession}, sessionId={currentSessionId ?? "null"}");
             }
         }
 
@@ -684,6 +725,9 @@ namespace VRLogDashboard
         /// </summary>
         public void LogContentSelect(int contentId)
         {
+            // 진단용 로그 - 메서드 호출 확인
+            Log($"📝 LogContentSelect called: contentId={contentId}, HasSession={HasActiveSession}, SessionId={currentSessionId ?? "null"}");
+
             currentVideoID = contentId;
             var videoInfo = GetVideoFileNameByID();
 
@@ -702,14 +746,33 @@ namespace VRLogDashboard
         /// </summary>
         public async Task<bool> LogContentSelectAsync(string contentId, string contentName, Dictionary<string, object> metadata = null)
         {
+            // 진단용 로그 - 메서드 호출 확인
+            Log($"📝 LogContentSelectAsync called: contentId={contentId}, contentName={contentName}, HasSession={HasActiveSession}, SessionId={currentSessionId ?? "null"}, Initialized={isSessionInitialized}");
+
             if (!HasActiveSession)
             {
-                // 세션이 없을 때는 조용히 실패 (너무 많은 에러 로그 방지)
-                if (enableDebugLogs)
+                // 세션이 없을 때는 조용히 실패하지 않고 항상 로그
+                Log($"⚠️ LogContentSelectAsync: No active session - contentId={contentId}, initializing={isSessionInitializing}");
+
+                // 초기화 중이면 잠시 대기 후 재시도
+                if (isSessionInitializing)
                 {
-                    LogDebug("Cannot log: No active session (silent fail)");
+                    Log("⏳ Session is initializing, waiting...");
+                    bool initialized = await WaitForSessionInitialized(5f);
+                    if (initialized && HasActiveSession)
+                    {
+                        Log($"✅ Session initialized, proceeding with content select: sessionId={currentSessionId}");
+                    }
+                    else
+                    {
+                        Log("❌ Session initialization failed or timed out");
+                        return false;
+                    }
                 }
-                return false;
+                else
+                {
+                    return false;
+                }
             }
 
             var request = new ContentSelectRequest
@@ -719,7 +782,9 @@ namespace VRLogDashboard
                 content_name = contentName
             };
 
-            return await QueueRequest("/api/logs/content-select", JsonUtility.ToJson(request));
+            bool result = await QueueRequest("/api/logs/content-select", JsonUtility.ToJson(request));
+            Log($"📝 LogContentSelectAsync result: {result}, contentId={contentId}");
+            return result;
         }
 
         /// <summary>
@@ -735,6 +800,9 @@ namespace VRLogDashboard
         /// </summary>
         public async Task<bool> LogWatchStart(string contentId, string contentName)
         {
+            // 진단용 로그 - 메서드 호출 확인
+            Log($"📝 LogWatchStart called: contentId={contentId}, contentName={contentName}, HasSession={HasActiveSession}, SessionId={currentSessionId ?? "null"}");
+
             // 시청 시작 시간 기록
             watchStartTime = Time.realtimeSinceStartup;
             return await LogWatchEvent(contentId, contentName, "WATCH_START", 0);
@@ -746,6 +814,9 @@ namespace VRLogDashboard
         /// </summary>
         public void LogWatchEnd(string contentId, string contentName)
         {
+            // 진단용 로그 - 메서드 호출 확인
+            Log($"📝 LogWatchEnd called: contentId={contentId}, contentName={contentName}, HasSession={HasActiveSession}, SessionId={currentSessionId ?? "null"}");
+
             _ = LogWatchEndAsync(contentId, contentName);
         }
 
@@ -1002,6 +1073,53 @@ namespace VRLogDashboard
         }
 
         /// <summary>
+        /// 세션 상태를 진단용으로 덤프합니다.
+        /// </summary>
+        public void DumpSessionState()
+        {
+            Log("========== SESSION STATE DUMP ==========");
+            Log($"IsLoggedIn: {IsLoggedIn}");
+            Log($"HasActiveSession: {HasActiveSession}");
+            Log($"CurrentSessionId: {currentSessionId ?? "null"}");
+            Log($"AuthToken: {(!string.IsNullOrEmpty(authToken) ? authToken.Substring(0, Math.Min(10, authToken.Length)) + "..." : "null")}");
+            Log($"IsSessionInitialized: {isSessionInitialized}");
+            Log($"IsSessionInitializing: {isSessionInitializing}");
+            Log($"IsTokenValid: {isTokenValid}");
+            Log($"LastTokenValidation: {lastTokenValidation?.ToString() ?? "never"}");
+            Log($"IsNetworkAvailable: {isNetworkAvailable}");
+            Log($"IsServerReachable: {isServerReachable}");
+            Log($"IsOnline: {IsOnline}");
+            Log($"EnableTokenValidation: {enableTokenValidation}");
+            Log($"EnableOfflineSync: {enableOfflineSync}");
+            Log($"ServerUrl: {serverUrl}");
+            Log($"DeviceId: {deviceId}");
+            Log($"PendingRequestsCount: {pendingRequests.Count}");
+            Log("========================================");
+        }
+
+        /// <summary>
+        /// 세션 초기화가 완료될 때까지 대기합니다. (최대 timeoutSeconds 초)
+        /// </summary>
+        public async Task<bool> WaitForSessionInitialized(float timeoutSeconds = 10f)
+        {
+            float elapsed = 0f;
+            float checkInterval = 0.1f;
+
+            while (!isSessionInitialized && elapsed < timeoutSeconds)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(checkInterval));
+                elapsed += checkInterval;
+            }
+
+            if (!isSessionInitialized)
+            {
+                Log($"⚠️ WaitForSessionInitialized timed out after {timeoutSeconds}s");
+            }
+
+            return isSessionInitialized;
+        }
+
+        /// <summary>
         /// 현재 세션을 수동으로 로컬에 저장합니다.
         /// </summary>
         public void SaveSession()
@@ -1126,14 +1244,33 @@ namespace VRLogDashboard
 
         private async Task<bool> LogWatchEvent(string contentId, string contentName, string actionType, float duration)
         {
+            // 진단용 로그 - 메서드 호출 확인
+            Log($"📝 LogWatchEvent called: contentId={contentId}, actionType={actionType}, duration={duration}, HasSession={HasActiveSession}, SessionId={currentSessionId ?? "null"}, Initialized={isSessionInitialized}");
+
             if (!HasActiveSession)
             {
-                // 세션이 없을 때는 조용히 실패 (너무 많은 에러 로그 방지)
-                if (enableDebugLogs)
+                // 세션이 없을 때는 조용히 실패하지 않고 항상 로그
+                Log($"⚠️ LogWatchEvent: No active session - contentId={contentId}, actionType={actionType}, initializing={isSessionInitializing}");
+
+                // 초기화 중이면 잠시 대기 후 재시도
+                if (isSessionInitializing)
                 {
-                    LogDebug("Cannot log: No active session (silent fail)");
+                    Log("⏳ Session is initializing, waiting...");
+                    bool initialized = await WaitForSessionInitialized(5f);
+                    if (initialized && HasActiveSession)
+                    {
+                        Log($"✅ Session initialized, proceeding with watch event: sessionId={currentSessionId}");
+                    }
+                    else
+                    {
+                        Log($"❌ Session initialization failed or timed out for watch event: {actionType}");
+                        return false;
+                    }
                 }
-                return false;
+                else
+                {
+                    return false;
+                }
             }
 
             var request = new ContentWatchRequest
@@ -1145,7 +1282,9 @@ namespace VRLogDashboard
                 duration = Mathf.RoundToInt(duration)
             };
 
-            return await QueueRequest("/api/logs/content-watch", JsonUtility.ToJson(request));
+            bool result = await QueueRequest("/api/logs/content-watch", JsonUtility.ToJson(request));
+            Log($"📝 LogWatchEvent result: {result}, actionType={actionType}, contentId={contentId}");
+            return result;
         }
 
         private async Task<bool> QueueRequest(string endpoint, string jsonBody)
