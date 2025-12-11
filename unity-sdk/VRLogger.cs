@@ -46,6 +46,10 @@ namespace VRLogDashboard
         [SerializeField] private bool autoLogin = true;
         [SerializeField] private float heartbeatInterval = 60f;
         [SerializeField] private bool enableDebugLogs = true;
+        [SerializeField] private int maxQueueSize = 5000;
+        [SerializeField] private int requestTimeout = 10;
+        [SerializeField] private int maxRetries = 3;
+        [SerializeField] private float retryInterval = 60f;
         #endregion
 
         #region Private Fields
@@ -55,6 +59,9 @@ namespace VRLogDashboard
         private Queue<LogRequest> pendingRequests = new Queue<LogRequest>();
         private bool isProcessingQueue = false;
         private Coroutine heartbeatCoroutine;
+        private Coroutine retryLoginCoroutine;
+        private const string OfflineQueueKey = "VRLogger_OfflineQueue";
+        private const string AuthTokenKey = "VRLogger_AuthToken";
         #endregion
 
         #region Events
@@ -101,6 +108,12 @@ namespace VRLogDashboard
 
         private void Start()
         {
+            // Load saved auth token
+            LoadAuthToken();
+
+            // Load offline queue
+            LoadOfflineQueue();
+
             if (autoLogin)
             {
                 _ = AutoLogin();
@@ -109,6 +122,9 @@ namespace VRLogDashboard
 
         private void OnApplicationQuit()
         {
+            // Save offline queue
+            SaveOfflineQueue();
+
             if (HasActiveSession)
             {
                 // Synchronous session end on quit
@@ -118,10 +134,16 @@ namespace VRLogDashboard
 
         private void OnApplicationPause(bool pauseStatus)
         {
-            if (pauseStatus && HasActiveSession)
+            if (pauseStatus)
             {
-                // App going to background - end session
-                _ = LogSessionEnd();
+                // Save queue when app goes to background
+                SaveOfflineQueue();
+
+                if (HasActiveSession)
+                {
+                    // App going to background - end session
+                    _ = LogSessionEnd();
+                }
             }
             else if (!pauseStatus && IsLoggedIn && !HasActiveSession)
             {
@@ -168,6 +190,9 @@ namespace VRLogDashboard
                     authToken = response.token;
                     isInitialized = true;
 
+                    // Save auth token
+                    SaveAuthToken();
+
                     Log($"Device registered: {response.device.device_id}, New: {response.is_new_device}");
 
                     OnLoginComplete?.Invoke(true);
@@ -178,16 +203,37 @@ namespace VRLogDashboard
                     // Start heartbeat
                     StartHeartbeat();
 
+                    // Stop retry coroutine if running
+                    if (retryLoginCoroutine != null)
+                    {
+                        StopCoroutine(retryLoginCoroutine);
+                        retryLoginCoroutine = null;
+                    }
+
                     return true;
                 }
 
                 OnLoginComplete?.Invoke(false);
+
+                // Start retry login if not already running
+                if (retryLoginCoroutine == null)
+                {
+                    retryLoginCoroutine = StartCoroutine(RetryLoginCoroutine());
+                }
+
                 return false;
             }
             catch (Exception ex)
             {
                 LogError($"AutoLogin failed: {ex.Message}");
                 OnLoginComplete?.Invoke(false);
+
+                // Start retry login if not already running
+                if (retryLoginCoroutine == null)
+                {
+                    retryLoginCoroutine = StartCoroutine(RetryLoginCoroutine());
+                }
+
                 return false;
             }
         }
@@ -233,15 +279,9 @@ namespace VRLogDashboard
         /// </summary>
         public async Task<bool> LogContentSelect(string contentId, string contentName, Dictionary<string, object> metadata = null)
         {
-            if (!HasActiveSession)
-            {
-                LogError("Cannot log: No active session");
-                return false;
-            }
-
             var request = new ContentSelectRequest
             {
-                session_id = currentSessionId,
+                session_id = currentSessionId ?? "offline",
                 content_id = contentId,
                 content_name = contentName
             };
@@ -352,15 +392,9 @@ namespace VRLogDashboard
         /// </summary>
         public async Task<bool> LogContentSwitch(string fromContentId, string toContentId, string toContentName)
         {
-            if (!HasActiveSession)
-            {
-                LogError("Cannot log: No active session");
-                return false;
-            }
-
             var request = new ContentSwitchRequest
             {
-                session_id = currentSessionId,
+                session_id = currentSessionId ?? "offline",
                 from_content_id = fromContentId,
                 to_content_id = toContentId,
                 to_content_name = toContentName
@@ -375,15 +409,9 @@ namespace VRLogDashboard
 
         private async Task<bool> LogWatchEvent(string contentId, string contentName, string actionType, float duration)
         {
-            if (!HasActiveSession)
-            {
-                LogError("Cannot log: No active session");
-                return false;
-            }
-
             var request = new ContentWatchRequest
             {
-                session_id = currentSessionId,
+                session_id = currentSessionId ?? "offline",
                 content_id = contentId,
                 content_name = contentName,
                 action_type = actionType,
@@ -395,15 +423,9 @@ namespace VRLogDashboard
 
         private async Task<bool> LogLobbyEvent(string actionType)
         {
-            if (!HasActiveSession)
-            {
-                LogError("Cannot log: No active session");
-                return false;
-            }
-
             var request = new LobbyEventRequest
             {
-                session_id = currentSessionId,
+                session_id = currentSessionId ?? "offline",
                 action_type = actionType
             };
 
@@ -412,7 +434,15 @@ namespace VRLogDashboard
 
         private async Task<bool> QueueRequest(string endpoint, string jsonBody)
         {
+            // Limit queue size
+            if (pendingRequests.Count >= maxQueueSize)
+            {
+                var removed = pendingRequests.Dequeue();
+                LogError($"Queue full ({maxQueueSize}), removed oldest log");
+            }
+
             pendingRequests.Enqueue(new LogRequest { endpoint = endpoint, body = jsonBody });
+            Log($"Queued log (queue size: {pendingRequests.Count})");
 
             if (!isProcessingQueue)
             {
@@ -425,23 +455,56 @@ namespace VRLogDashboard
         private async Task ProcessQueue()
         {
             isProcessingQueue = true;
+            int processedCount = 0;
+            int failedCount = 0;
 
-            while (pendingRequests.Count > 0)
+            while (pendingRequests.Count > 0 && processedCount < 100)
             {
                 var request = pendingRequests.Dequeue();
 
                 try
                 {
-                    await PostRequest<BaseResponse>(request.endpoint, request.body, true);
+                    var response = await PostRequest<BaseResponse>(request.endpoint, request.body, true);
+
+                    if (response != null && response.success)
+                    {
+                        processedCount++;
+                    }
+                    else
+                    {
+                        // Re-queue on failure
+                        if (request.retryCount < maxRetries)
+                        {
+                            request.retryCount++;
+                            pendingRequests.Enqueue(request);
+                            failedCount++;
+                        }
+                        else
+                        {
+                            LogError($"Max retries reached for log, discarding");
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
                     LogError($"Failed to process request: {ex.Message}");
-                    // Re-queue on failure (with max retries in production)
+
+                    // Re-queue on exception
+                    if (request.retryCount < maxRetries)
+                    {
+                        request.retryCount++;
+                        pendingRequests.Enqueue(request);
+                        failedCount++;
+                    }
                 }
 
                 // Small delay between requests
                 await Task.Delay(50);
+            }
+
+            if (processedCount > 0 || failedCount > 0)
+            {
+                Log($"ProcessQueue complete - Sent: {processedCount}, Failed: {failedCount}, Remaining: {pendingRequests.Count}");
             }
 
             isProcessingQueue = false;
@@ -458,6 +521,9 @@ namespace VRLogDashboard
                 request.uploadHandler = new UploadHandlerRaw(bodyRaw);
                 request.downloadHandler = new DownloadHandlerBuffer();
                 request.SetRequestHeader("Content-Type", "application/json");
+
+                // Set timeout
+                request.timeout = requestTimeout;
 
                 if (authenticated && !string.IsNullOrEmpty(authToken))
                 {
@@ -673,6 +739,139 @@ namespace VRLogDashboard
         {
             public string endpoint;
             public string body;
+            public int retryCount;
+        }
+
+        [Serializable]
+        private class OfflineQueueData
+        {
+            public List<LogRequestData> logs;
+        }
+
+        [Serializable]
+        private class LogRequestData
+        {
+            public string endpoint;
+            public string body;
+            public int retryCount;
+        }
+
+        #endregion
+
+        #region Local Storage
+
+        private void SaveOfflineQueue()
+        {
+            try
+            {
+                // Limit saved queue size to 1000 to avoid PlayerPrefs size limits
+                int saveCount = Mathf.Min(1000, pendingRequests.Count);
+                var logsToSave = new List<LogRequestData>();
+
+                var tempQueue = new Queue<LogRequest>(pendingRequests);
+                for (int i = 0; i < saveCount && tempQueue.Count > 0; i++)
+                {
+                    var log = tempQueue.Dequeue();
+                    logsToSave.Add(new LogRequestData
+                    {
+                        endpoint = log.endpoint,
+                        body = log.body,
+                        retryCount = log.retryCount
+                    });
+                }
+
+                var data = new OfflineQueueData { logs = logsToSave };
+                string json = JsonUtility.ToJson(data);
+                PlayerPrefs.SetString(OfflineQueueKey, json);
+                PlayerPrefs.Save();
+
+                Log($"Saved {logsToSave.Count} logs to offline queue");
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to save offline queue: {ex.Message}");
+            }
+        }
+
+        private void LoadOfflineQueue()
+        {
+            try
+            {
+                if (PlayerPrefs.HasKey(OfflineQueueKey))
+                {
+                    string json = PlayerPrefs.GetString(OfflineQueueKey);
+                    var data = JsonUtility.FromJson<OfflineQueueData>(json);
+
+                    if (data != null && data.logs != null)
+                    {
+                        foreach (var log in data.logs)
+                        {
+                            pendingRequests.Enqueue(new LogRequest
+                            {
+                                endpoint = log.endpoint,
+                                body = log.body,
+                                retryCount = log.retryCount
+                            });
+                        }
+
+                        Log($"Loaded {data.logs.Count} logs from offline queue");
+
+                        // Clear saved queue
+                        PlayerPrefs.DeleteKey(OfflineQueueKey);
+                        PlayerPrefs.Save();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to load offline queue: {ex.Message}");
+            }
+        }
+
+        private void SaveAuthToken()
+        {
+            try
+            {
+                PlayerPrefs.SetString(AuthTokenKey, authToken);
+                PlayerPrefs.Save();
+                Log("Auth token saved");
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to save auth token: {ex.Message}");
+            }
+        }
+
+        private void LoadAuthToken()
+        {
+            try
+            {
+                if (PlayerPrefs.HasKey(AuthTokenKey))
+                {
+                    authToken = PlayerPrefs.GetString(AuthTokenKey);
+                    isInitialized = !string.IsNullOrEmpty(authToken);
+                    Log("Auth token loaded");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to load auth token: {ex.Message}");
+            }
+        }
+
+        private IEnumerator RetryLoginCoroutine()
+        {
+            Log("Starting retry login coroutine");
+
+            while (!IsLoggedIn)
+            {
+                yield return new WaitForSeconds(retryInterval);
+
+                Log("Retrying auto login...");
+                _ = AutoLogin();
+            }
+
+            Log("Retry login coroutine stopped - login successful");
         }
 
         #endregion
