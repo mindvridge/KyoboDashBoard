@@ -2616,14 +2616,22 @@ namespace VRLogDashboard
                 if (previousState != isNetworkAvailable)
                 {
                     Log($"🌐 Network state changed: {(isNetworkAvailable ? "Online ✅" : "Offline ❌")}");
-                    OnNetworkStatusChanged?.Invoke(isNetworkAvailable);
+
+                    try
+                    {
+                        OnNetworkStatusChanged?.Invoke(isNetworkAvailable);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError($"OnNetworkStatusChanged event handler error: {ex.Message}");
+                    }
 
                     // Network recovered
                     if (isNetworkAvailable)
                     {
                         Log("🔄 Network recovered, checking server connectivity...");
-                        // 서버 핑을 즉시 확인
-                        _ = CheckServerConnectivity();
+                        // 서버 핑을 즉시 확인 - 코루틴에서 안전하게 호출
+                        StartCoroutine(CheckServerAndSyncCoroutine());
                     }
                     else
                     {
@@ -2633,6 +2641,29 @@ namespace VRLogDashboard
                         Log("📡 Network offline, server marked as unreachable");
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// 네트워크 복구 시 서버 연결 확인 및 동기화를 안전하게 실행하는 코루틴
+        /// </summary>
+        private IEnumerator CheckServerAndSyncCoroutine()
+        {
+            Log("🔍 Starting server connectivity check coroutine...");
+
+            var task = CheckServerConnectivity();
+            while (!task.IsCompleted)
+            {
+                yield return null;
+            }
+
+            if (task.IsFaulted)
+            {
+                LogError($"Server connectivity check failed with exception: {task.Exception?.GetBaseException()?.Message}");
+            }
+            else
+            {
+                Log($"✅ Server connectivity check completed. isServerReachable={isServerReachable}");
             }
         }
 
@@ -2660,11 +2691,15 @@ namespace VRLogDashboard
         private async Task<bool> CheckServerConnectivity()
         {
             bool previousState = isServerReachable;
+            Log($"🔗 CheckServerConnectivity started. previousState={previousState}, serverUrl={serverUrl}");
 
             try
             {
                 // 간단한 health check 요청 (백엔드는 /api 접두사 사용)
-                using (var request = UnityWebRequest.Get($"{serverUrl}/api/health"))
+                var healthUrl = $"{serverUrl}/api/health";
+                Log($"📡 Sending health check to: {healthUrl}");
+
+                using (var request = UnityWebRequest.Get(healthUrl))
                 {
                     request.timeout = 10; // 10초 타임아웃
 
@@ -2677,6 +2712,7 @@ namespace VRLogDashboard
                     }
 
                     isServerReachable = request.result == UnityWebRequest.Result.Success;
+                    Log($"📡 Health check result: {request.result}, responseCode={request.responseCode}, isServerReachable={isServerReachable}");
 
                     if (!isServerReachable)
                     {
@@ -2686,15 +2722,25 @@ namespace VRLogDashboard
             }
             catch (Exception ex)
             {
-                LogDebug($"Server connectivity check failed: {ex.Message}");
+                LogError($"Server connectivity check exception: {ex.Message}");
                 isServerReachable = false;
             }
+
+            Log($"🔗 State comparison: previousState={previousState}, isServerReachable={isServerReachable}, stateChanged={previousState != isServerReachable}");
 
             // 상태가 변경되었을 때
             if (previousState != isServerReachable)
             {
                 Log($"🌐 Server reachability changed: {(isServerReachable ? "Reachable ✅" : "Unreachable ❌")}");
-                OnNetworkStatusChanged?.Invoke(IsOnline);
+
+                try
+                {
+                    OnNetworkStatusChanged?.Invoke(IsOnline);
+                }
+                catch (Exception ex)
+                {
+                    LogError($"OnNetworkStatusChanged event error: {ex.Message}");
+                }
 
                 // 서버에 연결되었을 때 오프라인 로그 동기화
                 if (isServerReachable)
@@ -2712,6 +2758,10 @@ namespace VRLogDashboard
                         Log($"⚠️ Offline sync skipped: enableOfflineSync={enableOfflineSync}, IsLoggedIn={IsLoggedIn}");
                     }
                 }
+            }
+            else
+            {
+                Log($"ℹ️ Server state unchanged (previousState={previousState}, isServerReachable={isServerReachable}), no sync triggered");
             }
 
             return isServerReachable;
