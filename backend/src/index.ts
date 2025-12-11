@@ -31,6 +31,7 @@ async function bootstrap() {
       const allowedOrigins = (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || '')
         .split(',')
         .map(o => o.trim())
+        .map(o => o.replace(/^["']|["']$/g, '')) // Remove leading/trailing quotes
         .filter(o => o);
 
       // Determine if origin is allowed
