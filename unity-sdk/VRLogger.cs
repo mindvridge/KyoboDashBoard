@@ -128,8 +128,12 @@ namespace VRLogDashboard
         private const string PREF_SESSION_TIMESTAMP = "VRLogger_SessionTimestamp";
         private const string PREF_DEVICE_ID = "VRLogger_DeviceId";
 
-        // 시청 시간 추적
-        private float watchStartTime = 0f;
+        // 시청 시간 추적 (콘텐츠별)
+        private Dictionary<string, float> watchStartTimes = new Dictionary<string, float>();
+        
+        // 시청 완료 중복 방지 (콘텐츠별 마지막 시청 완료 시간)
+        private Dictionary<string, float> lastWatchEndTimes = new Dictionary<string, float>();
+        private const float WATCH_END_COOLDOWN = 2f; // 2초 내 중복 방지
 
         // 통계 추적
         private int totalLogsSent = 0;
@@ -835,8 +839,8 @@ namespace VRLogDashboard
             // 진단용 로그 - 메서드 호출 확인
             Log($"📝 LogWatchStart called: contentId={contentId}, contentName={contentName}, HasSession={HasActiveSession}, SessionId={currentSessionId ?? "null"}");
 
-            // 시청 시작 시간 기록
-            watchStartTime = Time.realtimeSinceStartup;
+            // 시청 시작 시간 기록 (콘텐츠별)
+            watchStartTimes[contentId] = Time.realtimeSinceStartup;
             _ = LogWatchStartAsync(contentId, contentName);
         }
 
@@ -866,18 +870,42 @@ namespace VRLogDashboard
         /// </summary>
         public async Task<bool> LogWatchEndAsync(string contentId, string contentName)
         {
+            // 중복 방지: 같은 콘텐츠에 대해 짧은 시간 내 중복 호출 방지
+            float currentTime = Time.realtimeSinceStartup;
+            if (lastWatchEndTimes.ContainsKey(contentId))
+            {
+                float timeSinceLastEnd = currentTime - lastWatchEndTimes[contentId];
+                if (timeSinceLastEnd < WATCH_END_COOLDOWN)
+                {
+                    Log($"⚠️ LogWatchEnd: Duplicate call ignored for contentId={contentId} (last call was {timeSinceLastEnd:F2}s ago)");
+                    return false;
+                }
+            }
+            lastWatchEndTimes[contentId] = currentTime;
+
             // 시청 완료 전에 해당 콘텐츠의 시청 시작 로그가 오프라인에 있으면 먼저 동기화
+            bool watchStartSynced = false;
             if (IsOnline && enableOfflineSync && IsLoggedIn && HasActiveSession)
             {
-                await SyncWatchStartLogForContent(contentId);
+                watchStartSynced = await SyncWatchStartLogForContent(contentId);
+            }
+
+            // 오프라인 로그에 시청 시작이 없고, watchStartTimes에 기록되어 있으면 시청 시작 로그를 강제로 재전송
+            if (!watchStartSynced && watchStartTimes.ContainsKey(contentId))
+            {
+                Log($"⚠️ WATCH_START log not found in offline logs for contentId={contentId}, resending WATCH_START...");
+                await LogWatchStartAsync(contentId, contentName);
+                // 재전송 후 잠시 대기하여 서버에 도착할 시간 확보
+                await Task.Delay(100);
             }
 
             float duration = 0;
-            if (watchStartTime > 0)
+            if (watchStartTimes.ContainsKey(contentId))
             {
-                duration = Time.realtimeSinceStartup - watchStartTime;
-                watchStartTime = 0f;
+                duration = Time.realtimeSinceStartup - watchStartTimes[contentId];
+                watchStartTimes.Remove(contentId);
             }
+            
             return await LogWatchEvent(contentId, contentName, "WATCH_END", duration);
         }
 
@@ -3223,7 +3251,8 @@ namespace VRLogDashboard
         /// 특정 콘텐츠의 시청 시작(WATCH_START) 로그를 오프라인 로그에서 찾아 우선 동기화합니다.
         /// 시청 완료 전에 호출하여 시청 시작 로그가 먼저 서버에 도착하도록 보장합니다.
         /// </summary>
-        private async Task SyncWatchStartLogForContent(string contentId)
+        /// <returns>동기화 성공 여부</returns>
+        private async Task<bool> SyncWatchStartLogForContent(string contentId)
         {
             if (!Directory.Exists(offlineLogsDirectoryPath)) return;
 
@@ -3269,7 +3298,7 @@ namespace VRLogDashboard
                                 watchStartEntry.syncedAt = DateTime.UtcNow.Add(KoreanTimeOffset).ToString("yyyy-MM-dd HH:mm:ss");
                                 SaveOfflineLogFile(file, logs);
                                 Log($"✅ Synced WATCH_START log for contentId={contentId} before WATCH_END");
-                                return; // 하나만 동기화하면 됨
+                                return true; // 하나만 동기화하면 됨
                             }
                             else
                             {
@@ -3287,6 +3316,8 @@ namespace VRLogDashboard
             {
                 LogError($"Error finding WATCH_START log for contentId={contentId}: {ex.Message}");
             }
+            
+            return false; // 오프라인 로그에서 찾지 못함
         }
 
         /// <summary>
