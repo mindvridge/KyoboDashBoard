@@ -1,6 +1,7 @@
 import express from 'express';
 import http from 'http';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import swaggerUi from 'swagger-ui-express';
 import { config, validateConfig } from './config';
 import { testConnection } from './config/database';
@@ -83,6 +84,9 @@ async function bootstrap() {
     // Body parsing
     app.use(express.json({ limit: '10mb' }));
     app.use(express.urlencoded({ extended: true }));
+
+    // Cookie parsing
+    app.use(cookieParser());
 
     // Rate limiting
     app.use('/api', apiLimiter);

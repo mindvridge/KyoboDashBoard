@@ -65,11 +65,20 @@ export class UserAuthController {
 
       logger.info('User logged in successfully', { email: user.email, userId: user.id });
 
+      // Set HttpOnly Cookie for security (prevents XSS attacks)
+      const isProduction = config.nodeEnv === 'production';
+      res.cookie('auth_token', token, {
+        httpOnly: true,
+        secure: isProduction, // HTTPS only in production
+        sameSite: isProduction ? 'strict' : 'lax',
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        path: '/',
+      });
+
       res.json({
         success: true,
         data: {
           user: UserModel.toPublic(user),
-          token,
         },
       });
     } catch (error: any) {
@@ -79,6 +88,31 @@ export class UserAuthController {
         code: error.code,
         stack: error.stack
       });
+      next(error);
+    }
+  }
+
+  // POST /api/auth/logout
+  static async logout(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const isProduction = config.nodeEnv === 'production';
+
+      // Clear the auth cookie
+      res.cookie('auth_token', '', {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? 'strict' : 'lax',
+        maxAge: 0,
+        path: '/',
+      });
+
+      logger.info('User logged out successfully');
+
+      res.json({
+        success: true,
+        message: '로그아웃되었습니다.',
+      });
+    } catch (error) {
       next(error);
     }
   }

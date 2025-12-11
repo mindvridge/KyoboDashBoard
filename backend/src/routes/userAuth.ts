@@ -7,6 +7,7 @@ const router = Router();
 
 // Public routes
 router.post('/login', validate(userLoginSchema), UserAuthController.login);
+router.post('/logout', UserAuthController.logout);
 
 // Protected routes
 router.get('/me', authenticateUser, UserAuthController.getCurrentUser);

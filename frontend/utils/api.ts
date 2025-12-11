@@ -5,7 +5,7 @@ const API_BASE = rawApiBase.replace(/\/api\/?$/, '');
 // 401 에러 시 자동 로그아웃 처리
 function handleUnauthorized() {
   if (typeof window !== 'undefined') {
-    localStorage.removeItem('auth_token');
+    // Clear any remaining localStorage items (user info only, token is in HttpOnly cookie)
     localStorage.removeItem('user');
     localStorage.removeItem('dev_mode');
     // 로그인 페이지로 리다이렉트
@@ -22,6 +22,7 @@ export async function fetchApi<T>(
   const url = `${API_BASE}/api${endpoint}`;
 
   const response = await fetch(url, {
+    credentials: 'include', // Include HttpOnly cookies for authentication
     headers: {
       'Content-Type': 'application/json',
       ...options?.headers,
@@ -42,20 +43,11 @@ export async function fetchApi<T>(
   return response.json();
 }
 
-// Helper function for authenticated requests (moved up for use in statsApi)
-function getAuthHeaders(): HeadersInit {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
+// Helper function for authenticated requests
+// Note: Authentication is now handled via HttpOnly cookies (credentials: 'include')
+// No need to manually set Authorization header for browser requests
 async function fetchApiAuth<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  return fetchApi<T>(endpoint, {
-    ...options,
-    headers: {
-      ...getAuthHeaders(),
-      ...options?.headers,
-    },
-  });
+  return fetchApi<T>(endpoint, options);
 }
 
 // Stats API (requires authentication)
@@ -87,8 +79,7 @@ export const statsApi = {
     if (params.startDate) query.set('start_date', params.startDate);
     if (params.endDate) query.set('end_date', params.endDate);
     if (params.format) query.set('format', params.format);
-    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-    if (token) query.set('token', token);
+    // Note: Authentication is handled via HttpOnly cookies
     return `${API_BASE}/api/stats/export/sessions?${query}`;
   },
   getExportLogsUrl: (params: { startDate?: string; endDate?: string; format?: string }) => {
@@ -96,8 +87,7 @@ export const statsApi = {
     if (params.startDate) query.set('start_date', params.startDate);
     if (params.endDate) query.set('end_date', params.endDate);
     if (params.format) query.set('format', params.format);
-    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-    if (token) query.set('token', token);
+    // Note: Authentication is handled via HttpOnly cookies
     return `${API_BASE}/api/stats/export/logs?${query}`;
   },
   getCalendarMonthly: (params: { year?: number; month?: number }) => {
@@ -231,16 +221,16 @@ export const videosApi = {
 // Auth API
 export const authApi = {
   login: (data: { email: string; password: string }) =>
-    fetchApi<{ success: boolean; data: { user: any; token: string } }>('/auth/login', {
+    fetchApi<{ success: boolean; data: { user: any } }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  getMe: (token: string) =>
-    fetchApi<{ success: boolean; data: any }>('/auth/me', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+  logout: () =>
+    fetchApi<{ success: boolean; message: string }>('/auth/logout', {
+      method: 'POST',
     }),
+  getMe: () =>
+    fetchApiAuth<{ success: boolean; data: any }>('/auth/me'),
 };
 
 // Admin API

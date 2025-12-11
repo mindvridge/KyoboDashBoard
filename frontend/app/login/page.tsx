@@ -24,8 +24,7 @@ export default function LoginPage() {
       const response = await authApi.login({ email, password });
 
       if (response.success && response.data) {
-        // Store token in localStorage
-        localStorage.setItem('auth_token', response.data.token);
+        // Store user info in localStorage (token is stored in HttpOnly cookie by server)
         localStorage.setItem('user', JSON.stringify(response.data.user));
 
         // Redirect to dashboard

@@ -19,13 +19,24 @@ export function authenticateUser(
   next: NextFunction
 ): void {
   try {
-    const authHeader = req.headers.authorization;
+    // Try to get token from HttpOnly cookie first, then fall back to Authorization header
+    let token: string | undefined;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedError('인증 토큰이 필요합니다.');
+    // 1. Check HttpOnly cookie (preferred, more secure)
+    if (req.cookies?.auth_token) {
+      token = req.cookies.auth_token;
+    }
+    // 2. Fall back to Authorization header (for API clients, Unity SDK, etc.)
+    else {
+      const authHeader = req.headers.authorization;
+      if (authHeader?.startsWith('Bearer ')) {
+        token = authHeader.split(' ')[1];
+      }
     }
 
-    const token = authHeader.split(' ')[1];
+    if (!token) {
+      throw new UnauthorizedError('인증 토큰이 필요합니다.');
+    }
 
     const decoded = jwt.verify(token, config.jwt.secret) as UserJWTPayload;
 

@@ -185,12 +185,6 @@ export default function LogsPage() {
 
   const handleDownload = async (type: 'all' | 'current' | 'watch' | 'monthly' | 'yearly') => {
     const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, '') || 'https://kyobodashboard-production.up.railway.app';
-    const token = localStorage.getItem('auth_token');
-
-    if (!token) {
-      alert('로그인이 필요합니다.');
-      return;
-    }
 
     const query = new URLSearchParams();
     query.set('format', 'csv');
@@ -244,9 +238,7 @@ export default function LogsPage() {
 
     try {
       const response = await fetch(`${baseUrl}/api/stats/export/logs?${query}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include', // Use HttpOnly cookie for authentication
       });
 
       if (!response.ok) {

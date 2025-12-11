@@ -7,52 +7,47 @@ import { User } from '@/types';
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   isDevMode: boolean;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDevMode, setIsDevMode] = useState(false);
   const router = useRouter();
 
-  // Initialize auth state from localStorage
+  // Initialize auth state - verify session with server via HttpOnly cookie
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const storedToken = localStorage.getItem('auth_token');
         const storedUser = localStorage.getItem('user');
         const devMode = localStorage.getItem('dev_mode') === 'true';
 
-        if (storedToken && storedUser) {
+        if (storedUser) {
           // If in development mode, skip token verification
           if (devMode) {
-            setToken(storedToken);
             setUser(JSON.parse(storedUser));
             setIsDevMode(true);
           } else {
-            // Verify token is still valid with backend
+            // Verify session is still valid with backend (cookie is sent automatically)
             try {
-              const response = await authApi.getMe(storedToken);
+              const response = await authApi.getMe();
               if (response.success && response.data) {
-                setToken(storedToken);
                 setUser(response.data);
+                // Update stored user info
+                localStorage.setItem('user', JSON.stringify(response.data));
               } else {
-                // Token invalid, clear storage
-                localStorage.removeItem('auth_token');
+                // Session invalid, clear storage
                 localStorage.removeItem('user');
               }
             } catch {
-              // Token invalid, clear storage
-              localStorage.removeItem('auth_token');
+              // Session invalid, clear storage
               localStorage.removeItem('user');
             }
           }
@@ -71,13 +66,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const response = await authApi.login({ email, password });
 
     if (response.success && response.data) {
-      const { token: newToken, user: newUser } = response.data;
+      const { user: newUser } = response.data;
 
-      localStorage.setItem('auth_token', newToken);
+      // Store user info (token is in HttpOnly cookie set by server)
       localStorage.setItem('user', JSON.stringify(newUser));
       localStorage.removeItem('dev_mode');
 
-      setToken(newToken);
       setUser(newUser);
       setIsDevMode(false);
 
@@ -85,11 +79,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('auth_token');
+  const logout = async () => {
+    try {
+      // Call logout API to clear the HttpOnly cookie on server
+      await authApi.logout();
+    } catch {
+      // Continue with local logout even if API fails
+    }
+
     localStorage.removeItem('user');
     localStorage.removeItem('dev_mode');
-    setToken(null);
     setUser(null);
     setIsDevMode(false);
     router.push('/login');
@@ -99,9 +98,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
-        token,
         isLoading,
-        isAuthenticated: !!token && !!user,
+        isAuthenticated: !!user,
         isDevMode,
         login,
         logout,
