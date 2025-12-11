@@ -289,7 +289,7 @@ export default function LogsPage() {
       <Sidebar />
 
       <div className="flex-1">
-        <Header title="로그 조회" />
+        <Header title="로그 조회" onRefresh={fetchLogs} isLoading={isLoading} />
 
         <main className="p-6">
           {/* Filters */}

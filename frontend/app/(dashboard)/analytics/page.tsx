@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -28,46 +28,47 @@ export default function AnalyticsPage() {
   const [popularContents, setPopularContents] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      try {
-        const endDate = new Date();
-        const startDate = subDays(endDate, parseInt(dateRange));
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const endDate = new Date();
+      const startDate = subDays(endDate, parseInt(dateRange));
 
-        const [dailyRes, popularRes] = await Promise.all([
-          statsApi.getDaily({
-            startDate: startDate.toISOString(),
-            endDate: endDate.toISOString(),
-          }),
-          statsApi.getPopular({
-            startDate: startDate.toISOString(),
-            endDate: endDate.toISOString(),
-            limit: 10,
-          }),
-        ]);
+      const [dailyRes, popularRes] = await Promise.all([
+        statsApi.getDaily({
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+        }),
+        statsApi.getPopular({
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+          limit: 10,
+        }),
+      ]);
 
-        if (dailyRes.success) {
-          setDailyStats(dailyRes.data.map((d: any) => ({
-            ...d,
-            date: format(new Date(d.date), 'MM/dd'),
-            total_events: parseInt(d.total_events),
-            unique_sessions: parseInt(d.unique_sessions),
-            total_watch_time: Math.round(parseInt(d.total_watch_time || 0) / 60),
-          })));
-        }
-
-        if (popularRes.success) {
-          setPopularContents(popularRes.data);
-        }
-      } catch {
-        // Error handled silently
-      } finally {
-        setIsLoading(false);
+      if (dailyRes.success) {
+        setDailyStats(dailyRes.data.map((d: any) => ({
+          ...d,
+          date: format(new Date(d.date), 'MM/dd'),
+          total_events: parseInt(d.total_events),
+          unique_sessions: parseInt(d.unique_sessions),
+          total_watch_time: Math.round(parseInt(d.total_watch_time || 0) / 60),
+        })));
       }
-    };
-    fetchData();
+
+      if (popularRes.success) {
+        setPopularContents(popularRes.data);
+      }
+    } catch {
+      // Error handled silently
+    } finally {
+      setIsLoading(false);
+    }
   }, [dateRange]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleExport = (type: 'sessions' | 'logs') => {
     const endDate = new Date();
@@ -91,7 +92,7 @@ export default function AnalyticsPage() {
       <Sidebar />
 
       <div className="flex-1">
-        <Header title="통계 분석" />
+        <Header title="통계 분석" onRefresh={fetchData} isLoading={isLoading} />
 
         <main className="p-6">
           {/* Filters */}

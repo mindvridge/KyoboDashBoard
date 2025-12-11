@@ -189,7 +189,7 @@ export default function VideosPage() {
       <Sidebar />
 
       <div className="flex-1">
-        <Header title="비디오 관리" />
+        <Header title="비디오 관리" onRefresh={fetchVideos} isLoading={isLoading} />
 
         <main className="p-6">
           <Card>

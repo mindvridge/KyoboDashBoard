@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -24,35 +24,36 @@ export default function TodayViewsPage() {
   const [logs, setLogs] = useState<ViewLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchTodayLogs = async () => {
-      try {
-        const now = new Date();
-        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const fetchTodayLogs = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const now = new Date();
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-        const result = await logsApi.getByDateRange({
-          startDate: startOfDay.toISOString(),
-          endDate: now.toISOString(),
-        });
+      const result = await logsApi.getByDateRange({
+        startDate: startOfDay.toISOString(),
+        endDate: now.toISOString(),
+      });
 
-        if (result.success) {
-          // WATCH_START, WATCH_END만 표시
-          const viewLogs = result.data.filter(
-            (log: ViewLog) => ['WATCH_START', 'WATCH_END'].includes(log.action_type)
-          );
-          setLogs(viewLogs);
-        }
-      } catch (error) {
-        console.error('Failed to fetch today logs:', error);
-      } finally {
-        setIsLoading(false);
+      if (result.success) {
+        // WATCH_START, WATCH_END만 표시
+        const viewLogs = result.data.filter(
+          (log: ViewLog) => ['WATCH_START', 'WATCH_END'].includes(log.action_type)
+        );
+        setLogs(viewLogs);
       }
-    };
+    } catch (error) {
+      console.error('Failed to fetch today logs:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
+  useEffect(() => {
     fetchTodayLogs();
     const interval = setInterval(fetchTodayLogs, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchTodayLogs]);
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
@@ -76,7 +77,7 @@ export default function TodayViewsPage() {
       <Sidebar />
 
       <div className="flex-1">
-        <Header title="오늘 시청 현황" />
+        <Header title="오늘 시청 현황" onRefresh={fetchTodayLogs} isLoading={isLoading} />
 
         <main className="p-6">
           {/* Back Button */}

@@ -98,7 +98,7 @@ export default function DevicesPage() {
       <Sidebar />
 
       <div className="flex-1">
-        <Header title="기기 관리" />
+        <Header title="기기 관리" onRefresh={fetchDevices} isLoading={isLoading} />
 
         <main className="p-6 space-y-6">
           {/* Statistics Cards */}
