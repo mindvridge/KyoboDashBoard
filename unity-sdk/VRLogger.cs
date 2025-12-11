@@ -2658,15 +2658,24 @@ namespace VRLogDashboard
             // 상태가 변경되었을 때
             if (previousState != isServerReachable)
             {
-                Log($"Server reachability changed: {(isServerReachable ? "Reachable" : "Unreachable")}");
+                Log($"🌐 Server reachability changed: {(isServerReachable ? "Reachable ✅" : "Unreachable ❌")}");
                 OnNetworkStatusChanged?.Invoke(IsOnline);
 
                 // 서버에 연결되었을 때 오프라인 로그 동기화
-                if (isServerReachable && enableOfflineSync && IsLoggedIn)
+                if (isServerReachable)
                 {
-                    Log("Server became reachable, syncing offline logs...");
-                    _ = SyncAllOfflineLogs();
-                    _ = RetryPendingLogs();
+                    Log($"📊 Sync conditions: enableOfflineSync={enableOfflineSync}, IsLoggedIn={IsLoggedIn}, HasSession={HasActiveSession}");
+
+                    if (enableOfflineSync && IsLoggedIn)
+                    {
+                        Log("🚀 Server became reachable, starting offline sync...");
+                        _ = SyncAllOfflineLogs();
+                        _ = RetryPendingLogs();
+                    }
+                    else
+                    {
+                        Log($"⚠️ Offline sync skipped: enableOfflineSync={enableOfflineSync}, IsLoggedIn={IsLoggedIn}");
+                    }
                 }
             }
 
@@ -2863,12 +2872,14 @@ namespace VRLogDashboard
         /// </summary>
         private async Task<bool> SyncAllOfflineLogs()
         {
+            Log($"🔄 SyncAllOfflineLogs called: IsOnline={IsOnline}, IsLoggedIn={IsLoggedIn}, enableOfflineSync={enableOfflineSync}");
+
             // 동시성 제어: 원자적 플래그 체크 및 설정
             lock (offlineSyncLock)
             {
                 if (isSyncingOfflineLogs)
                 {
-                    LogDebug("Offline sync already in progress");
+                    Log("⚠️ Offline sync already in progress, skipping");
                     return false;
                 }
                 isSyncingOfflineLogs = true;
@@ -2876,6 +2887,7 @@ namespace VRLogDashboard
 
             if (!Directory.Exists(offlineLogsDirectoryPath))
             {
+                Log($"📁 Offline logs directory does not exist: {offlineLogsDirectoryPath}");
                 lock (offlineSyncLock) { isSyncingOfflineLogs = false; }
                 return true;
             }
@@ -2957,18 +2969,24 @@ namespace VRLogDashboard
         /// </summary>
         private async Task<bool> SyncOfflineLogFile(string filePath)
         {
-            if (!File.Exists(filePath)) return true;
+            Log($"📂 SyncOfflineLogFile: {Path.GetFileName(filePath)}");
+
+            if (!File.Exists(filePath))
+            {
+                Log($"📂 File does not exist: {filePath}");
+                return true;
+            }
 
             var logs = LoadOfflineLogFile(filePath);
             var unsyncedEntries = logs.entries.Where(e => !e.synced).ToList();
 
             if (unsyncedEntries.Count == 0)
             {
-                LogDebug($"No unsynced entries in {Path.GetFileName(filePath)}");
+                Log($"✅ No unsynced entries in {Path.GetFileName(filePath)}");
                 return true;
             }
 
-            LogDebug($"Syncing {unsyncedEntries.Count} entries from {Path.GetFileName(filePath)}");
+            Log($"📤 Syncing {unsyncedEntries.Count} entries from {Path.GetFileName(filePath)}");
 
             bool allSynced = true;
 
@@ -2976,7 +2994,7 @@ namespace VRLogDashboard
             {
                 if (!IsOnline)
                 {
-                    LogDebug("Network disconnected, stopping sync");
+                    Log("⚠️ Network disconnected during sync, stopping");
                     allSynced = false;
                     break;
                 }
@@ -2991,6 +3009,7 @@ namespace VRLogDashboard
                             $"\"session_id\":\"{entry.session_id}\"",
                             $"\"session_id\":\"{currentSessionId}\""
                         );
+                        LogDebug($"Updated session_id: {entry.session_id} -> {currentSessionId}");
                     }
 
                     var response = await PostRequest<BaseResponse>(entry.endpoint, body, true);
@@ -3000,10 +3019,11 @@ namespace VRLogDashboard
                         // 성공: 동기화 완료 표시
                         entry.synced = true;
                         entry.syncedAt = DateTime.UtcNow.Add(KoreanTimeOffset).ToString("yyyy-MM-dd HH:mm:ss");
-                        LogDebug($"Synced offline log: {entry.endpoint}");
+                        Log($"✅ Synced offline log: {entry.endpoint}");
                     }
                     else
                     {
+                        Log($"❌ Failed to sync offline log: {entry.endpoint} - response was null or failed");
                         throw new Exception("Server returned failure response");
                     }
                 }
