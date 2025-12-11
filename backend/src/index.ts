@@ -27,8 +27,8 @@ async function bootstrap() {
     app.use((req, res, next) => {
       const origin = req.headers.origin;
 
-      // Get allowed origins from environment variable
-      const allowedOrigins = (process.env.CORS_ORIGINS || '')
+      // Get allowed origins from environment variable (support both CORS_ORIGINS and CORS_ORIGIN)
+      const allowedOrigins = (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || '')
         .split(',')
         .map(o => o.trim())
         .filter(o => o);
@@ -37,9 +37,9 @@ async function bootstrap() {
       let isOriginAllowed = false;
 
       if (allowedOrigins.length === 0) {
-        // Production 환경에서는 CORS_ORIGINS 필수
+        // Production 환경에서는 CORS_ORIGINS 또는 CORS_ORIGIN 필수
         if (config.nodeEnv === 'production') {
-          logger.error('CORS_ORIGINS not set in production - blocking all requests');
+          logger.error('CORS_ORIGINS or CORS_ORIGIN not set in production - blocking all requests');
           return res.status(403).json({
             success: false,
             error: {
@@ -49,7 +49,7 @@ async function bootstrap() {
           });
         }
 
-        // Development mode: allow all origins if CORS_ORIGINS not set
+        // Development mode: allow all origins if CORS_ORIGINS/CORS_ORIGIN not set
         isOriginAllowed = true;
         res.header('Access-Control-Allow-Origin', origin || '*');
         logger.debug('CORS: Development mode - allowing all origins');
