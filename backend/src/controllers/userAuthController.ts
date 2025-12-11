@@ -66,11 +66,12 @@ export class UserAuthController {
       logger.info('User logged in successfully', { email: user.email, userId: user.id });
 
       // Set HttpOnly Cookie for security (prevents XSS attacks)
+      // Note: sameSite 'none' is required for cross-domain cookies (frontend and backend on different domains)
       const isProduction = config.nodeEnv === 'production';
       res.cookie('auth_token', token, {
         httpOnly: true,
-        secure: isProduction, // HTTPS only in production
-        sameSite: isProduction ? 'strict' : 'lax',
+        secure: isProduction, // HTTPS only in production (required when sameSite is 'none')
+        sameSite: isProduction ? 'none' : 'lax', // 'none' for cross-domain, 'lax' for local dev
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
         path: '/',
       });
@@ -101,7 +102,7 @@ export class UserAuthController {
       res.cookie('auth_token', '', {
         httpOnly: true,
         secure: isProduction,
-        sameSite: isProduction ? 'strict' : 'lax',
+        sameSite: isProduction ? 'none' : 'lax',
         maxAge: 0,
         path: '/',
       });
