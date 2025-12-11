@@ -116,6 +116,7 @@ namespace VRLogDashboard
         // 재로그인 제어
         private bool isReloginInProgress = false;
         private readonly object reloginLock = new object();
+        private readonly object offlineSyncLock = new object();
 
         // 디버그 로그 파일
         private string debugLogFilePath;
@@ -146,6 +147,7 @@ namespace VRLogDashboard
         // 세션 초기화 상태
         private bool isSessionInitialized = false;
         private bool isSessionInitializing = false;
+        private readonly object sessionInitLock = new object();
 
         #endregion
 
@@ -201,7 +203,10 @@ namespace VRLogDashboard
             // HTTPS 인증서 검증 우회 설정 확인 (PostRequest에서 적용)
             if (bypassCertificateValidation)
             {
-                LogDebug("⚠️ Certificate validation will be bypassed (development mode)");
+                LogError("🚨 WARNING: Certificate validation is BYPASSED - SECURITY RISK!");
+                LogError("🚨 This should NEVER be enabled in production builds!");
+                LogError("🚨 MITM attacks are possible with this setting enabled.");
+                Debug.LogWarning("[VRLogger] SECURITY WARNING: bypassCertificateValidation is enabled!");
             }
 
             // 플랫폼 정보 로깅
@@ -292,13 +297,16 @@ namespace VRLogDashboard
         /// </summary>
         private async Task InitializeSessionAsync()
         {
-            if (isSessionInitializing)
+            // 동시성 제어: 원자적 플래그 체크 및 설정
+            lock (sessionInitLock)
             {
-                LogDebug("Session initialization already in progress, skipping...");
-                return;
+                if (isSessionInitializing)
+                {
+                    LogDebug("Session initialization already in progress, skipping...");
+                    return;
+                }
+                isSessionInitializing = true;
             }
-
-            isSessionInitializing = true;
             Log("🚀 Session initialization started...");
 
             try
@@ -383,7 +391,10 @@ namespace VRLogDashboard
             }
             finally
             {
-                isSessionInitializing = false;
+                lock (sessionInitLock)
+                {
+                    isSessionInitializing = false;
+                }
                 Log($"🏁 Session initialization completed: initialized={isSessionInitialized}, hasSession={HasActiveSession}, sessionId={currentSessionId ?? "null"}");
             }
         }
@@ -1338,7 +1349,7 @@ namespace VRLogDashboard
             bool shouldProcessQueue = false;
             int queueSize = 0;
 
-            // 동시성 제어: 큐에 안전하게 추가
+            // 동시성 제어: 큐에 안전하게 추가 (데드락 방지를 위해 단일 lock 사용)
             lock (queueLock)
             {
                 // 큐 크기 제한 체크
@@ -1353,12 +1364,12 @@ namespace VRLogDashboard
                 pendingRequests.Enqueue(logRequest);
                 queueSize = pendingRequests.Count;
                 totalLogsQueued++;
+            }
 
-                // isProcessingQueue 체크도 lock 내부에서 수행
-                lock (processingLock)
-                {
-                    shouldProcessQueue = !isProcessingQueue;
-                }
+            // 데드락 방지: 별도의 lock으로 처리 상태 확인
+            lock (processingLock)
+            {
+                shouldProcessQueue = !isProcessingQueue;
             }
 
             OnPendingLogsChanged?.Invoke(GetPendingLogCount());
@@ -1664,11 +1675,19 @@ namespace VRLogDashboard
                 request.SetRequestHeader("Content-Type", "application/json");
                 request.timeout = requestTimeout; // 타임아웃 설정
 
-                // HTTPS 인증서 검증 우회 (개발용)
+                // HTTPS 인증서 검증 우회 (개발용 - 프로덕션에서 사용 금지)
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
                 if (bypassCertificateValidation)
                 {
                     request.certificateHandler = new AcceptAllCertificatesHandler();
                 }
+#else
+                // 프로덕션 빌드에서는 인증서 우회 비활성화
+                if (bypassCertificateValidation)
+                {
+                    LogError("🚨 Certificate bypass is disabled in production builds for security!");
+                }
+#endif
 
                 if (authenticated && !string.IsNullOrEmpty(authToken))
                 {
@@ -2836,18 +2855,23 @@ namespace VRLogDashboard
         /// </summary>
         private async Task<bool> SyncAllOfflineLogs()
         {
-            if (isSyncingOfflineLogs)
+            // 동시성 제어: 원자적 플래그 체크 및 설정
+            lock (offlineSyncLock)
             {
-                LogDebug("Offline sync already in progress");
-                return false;
+                if (isSyncingOfflineLogs)
+                {
+                    LogDebug("Offline sync already in progress");
+                    return false;
+                }
+                isSyncingOfflineLogs = true;
             }
 
             if (!Directory.Exists(offlineLogsDirectoryPath))
             {
+                lock (offlineSyncLock) { isSyncingOfflineLogs = false; }
                 return true;
             }
 
-            isSyncingOfflineLogs = true;
             bool allSynced = true;
             int totalSynced = 0;
             int totalFailed = 0;
@@ -2911,7 +2935,10 @@ namespace VRLogDashboard
             }
             finally
             {
-                isSyncingOfflineLogs = false;
+                lock (offlineSyncLock)
+                {
+                    isSyncingOfflineLogs = false;
+                }
             }
 
             return allSynced;
