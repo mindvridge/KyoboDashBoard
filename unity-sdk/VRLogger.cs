@@ -807,15 +807,23 @@ namespace VRLogDashboard
         }
 
         /// <summary>
-        /// 콘텐츠 시청 시작을 로그합니다.
+        /// 콘텐츠 시청 시작을 로그합니다. (Fire and Forget)
         /// </summary>
-        public async Task<bool> LogWatchStart(string contentId, string contentName)
+        public void LogWatchStart(string contentId, string contentName)
         {
             // 진단용 로그 - 메서드 호출 확인
             Log($"📝 LogWatchStart called: contentId={contentId}, contentName={contentName}, HasSession={HasActiveSession}, SessionId={currentSessionId ?? "null"}");
 
             // 시청 시작 시간 기록
             watchStartTime = Time.realtimeSinceStartup;
+            _ = LogWatchStartAsync(contentId, contentName);
+        }
+
+        /// <summary>
+        /// 콘텐츠 시청 시작을 로그합니다. (async 버전)
+        /// </summary>
+        public async Task<bool> LogWatchStartAsync(string contentId, string contentName)
+        {
             return await LogWatchEvent(contentId, contentName, "WATCH_START", 0);
         }
 
