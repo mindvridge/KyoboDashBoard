@@ -79,6 +79,12 @@ namespace VRLogDashboard
         [SerializeField] private bool enableDailyLogArchive = true;
         [Tooltip("오프라인 시 로그를 날짜별 파일로 저장하고 네트워크 복구 시 자동 전송")]
         [SerializeField] private bool enableOfflineSync = true;
+
+        [Header("Queue Settings")]
+        [Tooltip("메모리 큐 최대 크기 (초과 시 오래된 로그를 로컬에 저장)")]
+        [SerializeField] private int maxQueueSize = 1000;
+        [Tooltip("손상된 파일 백업 활성화")]
+        [SerializeField] private bool backupCorruptedFiles = true;
         #endregion
 
         #region Private Fields
@@ -117,6 +123,13 @@ namespace VRLogDashboard
 
         // 시청 시간 추적
         private float watchStartTime = 0f;
+
+        // 통계 추적
+        private int totalLogsSent = 0;
+        private int totalLogsFailed = 0;
+        private int totalLogsQueued = 0;
+        private DateTime? lastSuccessfulSync = null;
+        private DateTime? lastFailedSync = null;
 
         #endregion
 
@@ -1011,6 +1024,48 @@ namespace VRLogDashboard
             return null;
         }
 
+        /// <summary>
+        /// 로그 전송 통계를 반환합니다.
+        /// </summary>
+        public LogStatistics GetStatistics()
+        {
+            return new LogStatistics
+            {
+                totalLogsSent = this.totalLogsSent,
+                totalLogsFailed = this.totalLogsFailed,
+                totalLogsQueued = this.totalLogsQueued,
+                pendingLogsCount = GetPendingLogCount(),
+                offlineLogsCount = GetOfflineLogCount(),
+                lastSuccessfulSync = this.lastSuccessfulSync,
+                lastFailedSync = this.lastFailedSync,
+                isOnline = IsOnline,
+                isSyncing = isSyncingOfflineLogs
+            };
+        }
+
+        /// <summary>
+        /// 통계를 초기화합니다.
+        /// </summary>
+        public void ResetStatistics()
+        {
+            totalLogsSent = 0;
+            totalLogsFailed = 0;
+            totalLogsQueued = 0;
+            lastSuccessfulSync = null;
+            lastFailedSync = null;
+            LogDebug("Statistics reset");
+        }
+
+        /// <summary>
+        /// 전송 성공률을 반환합니다. (0.0 ~ 1.0)
+        /// </summary>
+        public float GetSuccessRate()
+        {
+            int total = totalLogsSent + totalLogsFailed;
+            if (total == 0) return 1.0f;
+            return (float)totalLogsSent / total;
+        }
+
         #endregion
 
         #region Private Methods
@@ -1107,8 +1162,18 @@ namespace VRLogDashboard
             // 동시성 제어: 큐에 안전하게 추가
             lock (queueLock)
             {
+                // 큐 크기 제한 체크
+                if (pendingRequests.Count >= maxQueueSize)
+                {
+                    // 오래된 요청을 로컬에 저장
+                    var oldRequest = pendingRequests.Dequeue();
+                    SaveFailedLogToLocal(oldRequest);
+                    LogDebug($"Queue full ({maxQueueSize}), moved oldest request to local storage");
+                }
+
                 pendingRequests.Enqueue(logRequest);
                 queueSize = pendingRequests.Count;
+                totalLogsQueued++;
 
                 // isProcessingQueue 체크도 lock 내부에서 수행
                 lock (processingLock)
@@ -1164,6 +1229,8 @@ namespace VRLogDashboard
                         if (response != null && response.success)
                         {
                             Log($"Log sent successfully: {request.endpoint}");
+                            totalLogsSent++;
+                            lastSuccessfulSync = DateTime.UtcNow;
                         }
                         else
                         {
@@ -1275,12 +1342,59 @@ namespace VRLogDashboard
                         {
                             // Max retries exceeded - save to local storage
                             SaveFailedLogToLocal(request);
+                            totalLogsFailed++;
+                            lastFailedSync = DateTime.UtcNow;
                             LogError($"Rate limit exceeded after {maxRetryCount} retries, saved locally");
 
                             // 모든 요청을 잠시 멈추고 대기 (서버 부하 감소)
                             Log("Pausing queue processing for 30 seconds due to rate limiting");
                             await Task.Delay(30000);
                         }
+                    }
+                    catch (ServerException serverEx)
+                    {
+                        // 서버 오류 (500대) - 재시도 가능 여부에 따라 처리
+                        LogError($"Server error: {serverEx.Message}");
+                        request.retryCount++;
+
+                        if (serverEx.IsRetryable && request.retryCount < maxRetryCount)
+                        {
+                            // 재시도 가능한 서버 오류 - exponential backoff
+                            int backoffSeconds = (int)Math.Pow(2, request.retryCount);
+                            backoffSeconds = Math.Min(backoffSeconds, 60);
+                            Log($"Retryable server error, waiting {backoffSeconds}s ({request.retryCount}/{maxRetryCount})");
+                            await Task.Delay(backoffSeconds * 1000);
+                            failedRequests.Add(request);
+                        }
+                        else
+                        {
+                            // 재시도 불가능하거나 최대 재시도 초과
+                            SaveFailedLogToLocal(request);
+                            totalLogsFailed++;
+                            lastFailedSync = DateTime.UtcNow;
+                            LogError($"Server error, saved locally after {request.retryCount} retries");
+                        }
+                    }
+                    catch (NetworkException networkEx)
+                    {
+                        // 네트워크 오류 - 오프라인 저장
+                        LogError($"Network error: {networkEx.Message}");
+                        var koreanTime = DateTime.UtcNow + KoreanTimeOffset;
+                        if (enableOfflineSync)
+                        {
+                            SaveToOfflineLog(request, koreanTime);
+                            Log("Network error, saved to offline storage for later sync");
+                        }
+                        else
+                        {
+                            SaveFailedLogToLocal(request);
+                        }
+                        totalLogsFailed++;
+                        lastFailedSync = DateTime.UtcNow;
+
+                        // 네트워크 오류 시 잠시 대기
+                        Log("Pausing queue processing for 5 seconds due to network error");
+                        await Task.Delay(5000);
                     }
                     catch (Exception ex)
                     {
@@ -1296,6 +1410,8 @@ namespace VRLogDashboard
                         {
                             // Max retries exceeded - save to local storage
                             SaveFailedLogToLocal(request);
+                            totalLogsFailed++;
+                            lastFailedSync = DateTime.UtcNow;
                             LogError($"Request failed after {maxRetryCount} retries, saved locally");
                         }
                     }
@@ -1465,6 +1581,28 @@ namespace VRLogDashboard
                         throw new RateLimitException(rateLimitError);
                     }
 
+                    // 500대 서버 오류
+                    if (statusCode >= 500 && statusCode < 600)
+                    {
+                        var serverError = $"Server error (HTTP {statusCode})";
+                        if (!string.IsNullOrEmpty(responseBody))
+                        {
+                            serverError += $": {responseBody}";
+                        }
+                        LogError(serverError);
+                        // 503 Service Unavailable은 재시도 가능
+                        bool isRetryable = statusCode == 503 || statusCode == 502 || statusCode == 504;
+                        throw new ServerException(statusCode, serverError, isRetryable);
+                    }
+
+                    // 네트워크 오류 (연결 실패)
+                    if (request.result == UnityWebRequest.Result.ConnectionError)
+                    {
+                        var networkError = $"Connection error: {request.error}";
+                        LogError(networkError);
+                        throw new NetworkException(networkError, isTimeout: false);
+                    }
+
                     // 기타 에러
                     var errorMessage = $"Request failed (HTTP {statusCode}): {request.error}";
                     if (!string.IsNullOrEmpty(responseBody))
@@ -1472,7 +1610,7 @@ namespace VRLogDashboard
                         errorMessage += $" - {responseBody}";
                     }
                     LogError(errorMessage);
-                    throw new Exception(request.error);
+                    throw new Exception(request.error ?? errorMessage);
                 }
             }
         }
@@ -1977,16 +2115,92 @@ namespace VRLogDashboard
         {
             if (File.Exists(localLogFilePath))
             {
-                var json = File.ReadAllText(localLogFilePath);
-                return JsonUtility.FromJson<LogRequestList>(json) ?? new LogRequestList();
+                try
+                {
+                    var json = File.ReadAllText(localLogFilePath);
+                    var result = JsonUtility.FromJson<LogRequestList>(json);
+                    if (result != null)
+                    {
+                        return result;
+                    }
+                    // JSON 파싱 실패 - 손상된 파일 처리
+                    LogError("Failed to parse local log file, file may be corrupted");
+                    BackupCorruptedFile(localLogFilePath);
+                }
+                catch (Exception ex)
+                {
+                    LogError($"Error reading local log file: {ex.Message}");
+                    BackupCorruptedFile(localLogFilePath);
+                }
             }
             return new LogRequestList();
         }
 
         private void SaveLocalLogFile(LogRequestList logs)
         {
-            var json = JsonUtility.ToJson(logs, true);
-            File.WriteAllText(localLogFilePath, json);
+            AtomicWriteFile(localLogFilePath, JsonUtility.ToJson(logs, true));
+        }
+
+        /// <summary>
+        /// 파일을 원자적으로 저장합니다. (임시 파일 → 이름 변경)
+        /// </summary>
+        private void AtomicWriteFile(string filePath, string content)
+        {
+            var tempPath = filePath + ".tmp";
+            try
+            {
+                // 임시 파일에 먼저 쓰기
+                File.WriteAllText(tempPath, content);
+
+                // 기존 파일 삭제 후 임시 파일 이름 변경
+                if (File.Exists(filePath))
+                {
+                    File.Delete(filePath);
+                }
+                File.Move(tempPath, filePath);
+            }
+            catch (IOException ioEx)
+            {
+                LogError($"File I/O error (disk full?): {ioEx.Message}");
+                // 임시 파일 정리
+                if (File.Exists(tempPath))
+                {
+                    try { File.Delete(tempPath); } catch { }
+                }
+                throw;
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to write file atomically: {ex.Message}");
+                // 임시 파일 정리
+                if (File.Exists(tempPath))
+                {
+                    try { File.Delete(tempPath); } catch { }
+                }
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 손상된 파일을 백업합니다.
+        /// </summary>
+        private void BackupCorruptedFile(string filePath)
+        {
+            if (!backupCorruptedFiles || !File.Exists(filePath)) return;
+
+            try
+            {
+                var koreanTime = DateTime.UtcNow + KoreanTimeOffset;
+                var backupPath = filePath + $".corrupted_{koreanTime:yyyyMMdd_HHmmss}";
+                File.Move(filePath, backupPath);
+                LogDebug($"Backed up corrupted file to: {backupPath}");
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to backup corrupted file: {ex.Message}");
+                // 백업 실패 시 그냥 삭제
+                try { File.Delete(filePath); } catch { }
+            }
         }
 
         private void ClearLocalLogFile()
@@ -2184,16 +2398,36 @@ namespace VRLogDashboard
         {
             if (File.Exists(filePath))
             {
-                var json = File.ReadAllText(filePath);
-                return JsonUtility.FromJson<DailyLogList>(json) ?? new DailyLogList();
+                try
+                {
+                    var json = File.ReadAllText(filePath);
+                    var result = JsonUtility.FromJson<DailyLogList>(json);
+                    if (result != null)
+                    {
+                        return result;
+                    }
+                    LogError($"Failed to parse daily log file: {filePath}");
+                    BackupCorruptedFile(filePath);
+                }
+                catch (Exception ex)
+                {
+                    LogError($"Error reading daily log file: {ex.Message}");
+                    BackupCorruptedFile(filePath);
+                }
             }
             return new DailyLogList();
         }
 
         private void SaveDailyLogFile(string filePath, DailyLogList logs)
         {
-            var json = JsonUtility.ToJson(logs, true);
-            File.WriteAllText(filePath, json);
+            try
+            {
+                AtomicWriteFile(filePath, JsonUtility.ToJson(logs, true));
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to save daily log file: {ex.Message}");
+            }
         }
 
         #endregion
@@ -2267,8 +2501,14 @@ namespace VRLogDashboard
         /// </summary>
         private void SaveOfflineLogFile(string filePath, OfflineLogList logs)
         {
-            var json = JsonUtility.ToJson(logs, true);
-            File.WriteAllText(filePath, json);
+            try
+            {
+                AtomicWriteFile(filePath, JsonUtility.ToJson(logs, true));
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to save offline log file: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -2641,6 +2881,34 @@ namespace VRLogDashboard
         }
 
         /// <summary>
+        /// 서버 오류 예외 클래스 (500대 오류)
+        /// </summary>
+        private class ServerException : Exception
+        {
+            public long StatusCode { get; }
+            public bool IsRetryable { get; }
+
+            public ServerException(long statusCode, string message, bool isRetryable = true) : base(message)
+            {
+                StatusCode = statusCode;
+                IsRetryable = isRetryable;
+            }
+        }
+
+        /// <summary>
+        /// 네트워크 오류 예외 클래스 (연결 실패, 타임아웃 등)
+        /// </summary>
+        private class NetworkException : Exception
+        {
+            public bool IsTimeout { get; }
+
+            public NetworkException(string message, bool isTimeout = false) : base(message)
+            {
+                IsTimeout = isTimeout;
+            }
+        }
+
+        /// <summary>
         /// HTTPS 인증서 검증 우회 핸들러 (개발용)
         /// </summary>
         private class AcceptAllCertificatesHandler : UnityEngine.Networking.CertificateHandler
@@ -2775,12 +3043,43 @@ namespace VRLogDashboard
             public List<OfflineLogEntry> entries = new List<OfflineLogEntry>();
         }
 
+        /// <summary>
+        /// 로그 전송 통계 클래스
+        /// </summary>
+        public class LogStatistics
+        {
+            public int totalLogsSent;
+            public int totalLogsFailed;
+            public int totalLogsQueued;
+            public int pendingLogsCount;
+            public int offlineLogsCount;
+            public DateTime? lastSuccessfulSync;
+            public DateTime? lastFailedSync;
+            public bool isOnline;
+            public bool isSyncing;
+
+            public float SuccessRate => (totalLogsSent + totalLogsFailed) > 0
+                ? (float)totalLogsSent / (totalLogsSent + totalLogsFailed)
+                : 1.0f;
+
+            public override string ToString()
+            {
+                return $"Sent: {totalLogsSent}, Failed: {totalLogsFailed}, Pending: {pendingLogsCount}, " +
+                       $"Offline: {offlineLogsCount}, Success Rate: {SuccessRate:P1}, Online: {isOnline}";
+            }
+        }
+
         #endregion
 
         #region Video Helper Methods
 
         public DashboardVideoLoader.Video GetVideoFileNameByID()
         {
+            if (dashboardVideoLoader == null)
+            {
+                LogDebug("DashboardVideoLoader is null, cannot get video file name");
+                return null;
+            }
             return dashboardVideoLoader.GetfileName(currentVideoID);
         }
 
