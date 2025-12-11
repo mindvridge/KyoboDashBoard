@@ -69,7 +69,7 @@ export class StatsService {
       }),
     };
 
-    await cacheSet(cacheKey, stats, 60); // 1 minute cache
+    await cacheSet(cacheKey, stats, 180); // 3 minute cache
     return stats;
   }
 

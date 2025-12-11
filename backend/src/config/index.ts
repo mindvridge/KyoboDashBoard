@@ -21,8 +21,21 @@ function parseDbUrl(url: string) {
 
 const dbFromUrl = process.env.DATABASE_URL ? parseDbUrl(process.env.DATABASE_URL) : null;
 
+// Safe parseInt with validation
+function safeParseInt(value: string | undefined, defaultValue: number, min: number, max: number, name: string): number {
+  const parsed = parseInt(value || String(defaultValue), 10);
+  if (isNaN(parsed) || parsed < min || parsed > max) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(`${name} must be a number between ${min} and ${max}, got: ${value}`);
+    }
+    console.warn(`⚠️  WARNING: Invalid ${name} value (${value}), using default: ${defaultValue}`);
+    return defaultValue;
+  }
+  return parsed;
+}
+
 export const config = {
-  port: parseInt(process.env.PORT || '3001', 10),
+  port: safeParseInt(process.env.PORT, 3001, 1024, 65535, 'PORT'),
   nodeEnv: process.env.NODE_ENV || 'development',
 
   db: {
@@ -55,12 +68,12 @@ export const config = {
   },
 
   rateLimit: {
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10),
-    maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10),
+    windowMs: safeParseInt(process.env.RATE_LIMIT_WINDOW_MS, 900000, 60000, 3600000, 'RATE_LIMIT_WINDOW_MS'),
+    maxRequests: safeParseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 100, 1, 10000, 'RATE_LIMIT_MAX_REQUESTS'),
   },
 
   logging: {
-    level: process.env.LOG_LEVEL || 'debug',
+    level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
   },
 };
 
