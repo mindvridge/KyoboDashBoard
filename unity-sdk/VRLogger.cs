@@ -61,8 +61,8 @@ namespace VRLogDashboard
         [Header("Local Storage Settings")]
         [SerializeField] private int maxRetryCount = 3;
         [SerializeField] private float networkCheckInterval = 10f;
-        [Tooltip("오프라인 로그 보관 일수 (0이면 영구 보관)")]
-        [SerializeField] private int offlineLogRetentionDays = 0;
+        [Tooltip("오프라인 로그 보관 일수 (0이면 영구 보관, 기본 1년)")]
+        [SerializeField] private int offlineLogRetentionDays = 365;
 
         [Header("Network Settings")]
         [Tooltip("네트워크 요청 타임아웃 시간 (초)")]
