@@ -337,6 +337,13 @@ namespace VRLogDashboard
                         // 대기 중인 로그 재전송
                         _ = RetryPendingLogs();
 
+                        // 오프라인 로그 동기화 시도 (온라인 상태이고 오프라인 로그가 있는 경우)
+                        if (IsOnline && enableOfflineSync && GetOfflineLogCount() > 0)
+                        {
+                            Log("🔄 Found offline logs, starting sync after session restore...");
+                            _ = SyncAllOfflineLogs();
+                        }
+
                         return;
                     }
                     else
@@ -359,6 +366,13 @@ namespace VRLogDashboard
                     {
                         isSessionInitialized = true;
                         Log($"✅ Session initialized via AutoLogin: sessionId={currentSessionId}");
+                        
+                        // 오프라인 로그 동기화 시도 (온라인 상태이고 오프라인 로그가 있는 경우)
+                        if (IsOnline && enableOfflineSync && GetOfflineLogCount() > 0)
+                        {
+                            Log("🔄 Found offline logs, starting sync after AutoLogin...");
+                            _ = SyncAllOfflineLogs();
+                        }
                     }
                     else
                     {
@@ -386,6 +400,13 @@ namespace VRLogDashboard
                     {
                         isSessionInitialized = true;
                         Log($"✅ Session initialized via retry: sessionId={currentSessionId}");
+                        
+                        // 오프라인 로그 동기화 시도 (온라인 상태이고 오프라인 로그가 있는 경우)
+                        if (IsOnline && enableOfflineSync && GetOfflineLogCount() > 0)
+                        {
+                            Log("🔄 Found offline logs, starting sync after retry login...");
+                            _ = SyncAllOfflineLogs();
+                        }
                     }
                 }
             }
@@ -845,6 +866,12 @@ namespace VRLogDashboard
         /// </summary>
         public async Task<bool> LogWatchEndAsync(string contentId, string contentName)
         {
+            // 시청 완료 전에 해당 콘텐츠의 시청 시작 로그가 오프라인에 있으면 먼저 동기화
+            if (IsOnline && enableOfflineSync && IsLoggedIn && HasActiveSession)
+            {
+                await SyncWatchStartLogForContent(contentId);
+            }
+
             float duration = 0;
             if (watchStartTime > 0)
             {
@@ -2681,6 +2708,17 @@ namespace VRLogDashboard
                 {
                     var pingTask = CheckServerConnectivity();
                     while (!pingTask.IsCompleted) yield return null;
+                    
+                    // 주기적으로 오프라인 로그 동기화 체크 (서버 연결되어 있고 로그인된 경우)
+                    if (isServerReachable && enableOfflineSync && IsLoggedIn && !isSyncingOfflineLogs)
+                    {
+                        int offlineLogCount = GetOfflineLogCount();
+                        if (offlineLogCount > 0)
+                        {
+                            Log($"🔄 Periodic sync check: {offlineLogCount} offline logs found, starting sync...");
+                            _ = SyncAllOfflineLogs();
+                        }
+                    }
                 }
             }
         }
@@ -2761,7 +2799,21 @@ namespace VRLogDashboard
             }
             else
             {
-                Log($"ℹ️ Server state unchanged (previousState={previousState}, isServerReachable={isServerReachable}), no sync triggered");
+                // 상태가 변경되지 않았어도, 서버에 연결되어 있고 오프라인 로그가 있으면 동기화 시도
+                // (주기적 체크를 통해 누락된 동기화를 보완)
+                if (isServerReachable && enableOfflineSync && IsLoggedIn)
+                {
+                    int offlineLogCount = GetOfflineLogCount();
+                    if (offlineLogCount > 0 && !isSyncingOfflineLogs)
+                    {
+                        Log($"🔄 Server reachable and {offlineLogCount} offline logs found, starting periodic sync check...");
+                        _ = SyncAllOfflineLogs();
+                    }
+                }
+                else
+                {
+                    Log($"ℹ️ Server state unchanged (previousState={previousState}, isServerReachable={isServerReachable})");
+                }
             }
 
             return isServerReachable;
@@ -3165,6 +3217,76 @@ namespace VRLogDashboard
             SaveOfflineLogFile(filePath, logs);
 
             return allSynced;
+        }
+
+        /// <summary>
+        /// 특정 콘텐츠의 시청 시작(WATCH_START) 로그를 오프라인 로그에서 찾아 우선 동기화합니다.
+        /// 시청 완료 전에 호출하여 시청 시작 로그가 먼저 서버에 도착하도록 보장합니다.
+        /// </summary>
+        private async Task SyncWatchStartLogForContent(string contentId)
+        {
+            if (!Directory.Exists(offlineLogsDirectoryPath)) return;
+
+            try
+            {
+                var files = Directory.GetFiles(offlineLogsDirectoryPath, "offline_*.json")
+                    .OrderBy(f => f) // 날짜순 정렬 (오래된 것부터)
+                    .ToArray();
+
+                foreach (var file in files)
+                {
+                    var logs = LoadOfflineLogFile(file);
+                    
+                    // 해당 콘텐츠의 미동기화된 WATCH_START 로그 찾기
+                    var watchStartEntry = logs.entries.FirstOrDefault(e => 
+                        !e.synced && 
+                        e.endpoint == "/api/logs/content-watch" &&
+                        e.body.Contains($"\"content_id\":\"{contentId}\"") &&
+                        e.body.Contains("\"action_type\":\"WATCH_START\""));
+
+                    if (watchStartEntry != null)
+                    {
+                        Log($"🔍 Found unsynced WATCH_START log for contentId={contentId}, syncing now...");
+                        
+                        // 세션 ID 업데이트
+                        string body = watchStartEntry.body;
+                        if (!string.IsNullOrEmpty(currentSessionId) && !string.IsNullOrEmpty(watchStartEntry.session_id))
+                        {
+                            body = body.Replace(
+                                $"\"session_id\":\"{watchStartEntry.session_id}\"",
+                                $"\"session_id\":\"{currentSessionId}\""
+                            );
+                        }
+
+                        try
+                        {
+                            var response = await PostRequest<BaseResponse>(watchStartEntry.endpoint, body, true);
+                            
+                            if (response != null && response.success)
+                            {
+                                // 성공: 동기화 완료 표시
+                                watchStartEntry.synced = true;
+                                watchStartEntry.syncedAt = DateTime.UtcNow.Add(KoreanTimeOffset).ToString("yyyy-MM-dd HH:mm:ss");
+                                SaveOfflineLogFile(file, logs);
+                                Log($"✅ Synced WATCH_START log for contentId={contentId} before WATCH_END");
+                                return; // 하나만 동기화하면 됨
+                            }
+                            else
+                            {
+                                Log($"⚠️ Failed to sync WATCH_START log for contentId={contentId}, will continue with WATCH_END");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Log($"⚠️ Error syncing WATCH_START log for contentId={contentId}: {ex.Message}, will continue with WATCH_END");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Error finding WATCH_START log for contentId={contentId}: {ex.Message}");
+            }
         }
 
         /// <summary>
