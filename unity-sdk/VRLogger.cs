@@ -85,6 +85,12 @@ namespace VRLogDashboard
         [SerializeField] private int maxQueueSize = 1000;
         [Tooltip("손상된 파일 백업 활성화")]
         [SerializeField] private bool backupCorruptedFiles = true;
+
+        [Header("Token Validation")]
+        [Tooltip("로그 전송 전 토큰 유효성 검사 활성화")]
+        [SerializeField] private bool enableTokenValidation = true;
+        [Tooltip("토큰 유효성 검사 간격 (초) - 이 시간 이내에는 재검사 생략")]
+        [SerializeField] private float tokenValidationInterval = 300f; // 5분
         #endregion
 
         #region Private Fields
@@ -131,6 +137,12 @@ namespace VRLogDashboard
         private DateTime? lastSuccessfulSync = null;
         private DateTime? lastFailedSync = null;
 
+        // 토큰 유효성 검사
+        private DateTime? lastTokenValidation = null;
+        private bool isTokenValid = false;
+        private bool isValidatingToken = false;
+        private readonly object tokenValidationLock = new object();
+
         #endregion
 
         #region Events
@@ -154,6 +166,8 @@ namespace VRLogDashboard
         public bool IsServerReachable => isServerReachable;
         public bool IsOnline => isNetworkAvailable && isServerReachable;
         public bool IsSyncingOfflineLogs => isSyncingOfflineLogs;
+        public bool IsTokenValid => isTokenValid;
+        public DateTime? LastTokenValidation => lastTokenValidation;
         public string ServerUrl
         {
             get => serverUrl;
@@ -578,6 +592,10 @@ namespace VRLogDashboard
                 {
                     authToken = response.token;
                     LogDebug($"Auth token received: {(string.IsNullOrEmpty(authToken) ? "null" : authToken.Substring(0, Math.Min(10, authToken.Length)))}...");
+
+                    // 토큰 유효 상태 업데이트
+                    isTokenValid = true;
+                    lastTokenValidation = DateTime.UtcNow;
 
                     Log($"Device registered: {response.device.device_id}, New: {response.is_new_device}");
 
@@ -1156,6 +1174,28 @@ namespace VRLogDashboard
                 return true; // 오프라인 저장 성공으로 처리
             }
 
+            // 토큰 유효성 검사 및 필요시 자동 재로그인
+            if (enableTokenValidation)
+            {
+                bool tokenReady = await EnsureValidTokenAsync();
+                if (!tokenReady)
+                {
+                    // 토큰 준비 실패 - 오프라인 저장
+                    LogDebug($"Token not valid, saving to offline storage: {endpoint}");
+                    if (enableOfflineSync)
+                    {
+                        SaveToOfflineLog(logRequest, koreanTime);
+                        OnPendingLogsChanged?.Invoke(GetPendingLogCount() + GetOfflineLogCount());
+                        return true; // 오프라인 저장 성공으로 처리
+                    }
+                    else
+                    {
+                        SaveFailedLogToLocal(logRequest);
+                        return false;
+                    }
+                }
+            }
+
             bool shouldProcessQueue = false;
             int queueSize = 0;
 
@@ -1300,15 +1340,23 @@ namespace VRLogDashboard
                     }
                     catch (AuthenticationException authEx)
                     {
-                        // 인증 실패 (401/403) - 재로그인 시도
+                        // 인증 실패 (401/403) - 토큰 무효화 후 재로그인 시도
                         LogError($"Authentication failed: {authEx.Message}");
+
+                        // 토큰 무효화
+                        isTokenValid = false;
+                        lastTokenValidation = null;
 
                         // 재로그인 시도
                         bool reloginSuccess = await TryReloginAsync();
 
                         if (reloginSuccess)
                         {
-                            // 재로그인 성공 - 현재 요청을 다시 큐에 추가 (재시도 카운트는 증가시키지 않음)
+                            // 재로그인 성공 - 토큰 유효 상태 업데이트
+                            isTokenValid = true;
+                            lastTokenValidation = DateTime.UtcNow;
+
+                            // 현재 요청을 다시 큐에 추가 (재시도 카운트는 증가시키지 않음)
                             Log("Relogin successful, retrying failed request");
                             failedRequests.Add(request);
                         }
@@ -1701,6 +1749,134 @@ namespace VRLogDashboard
                 LogError($"Heartbeat exception: {ex.Message}");
                 throw;
             }
+        }
+
+        /// <summary>
+        /// 토큰이 유효한지 확인합니다. 필요시 서버에 검증 요청을 보냅니다.
+        /// </summary>
+        /// <returns>토큰 유효 여부</returns>
+        private async Task<bool> ValidateTokenAsync()
+        {
+            // 토큰이 없으면 무효
+            if (string.IsNullOrEmpty(authToken))
+            {
+                LogDebug("Token validation failed: No token available");
+                isTokenValid = false;
+                return false;
+            }
+
+            // 토큰 검증이 비활성화되어 있으면 유효한 것으로 처리
+            if (!enableTokenValidation)
+            {
+                return true;
+            }
+
+            // 최근 검증 결과가 있으면 재사용 (캐싱)
+            if (lastTokenValidation.HasValue && isTokenValid)
+            {
+                var elapsed = (DateTime.UtcNow - lastTokenValidation.Value).TotalSeconds;
+                if (elapsed < tokenValidationInterval)
+                {
+                    LogDebug($"Token validation cached (valid for {tokenValidationInterval - elapsed:F0}s more)");
+                    return true;
+                }
+            }
+
+            // 동시성 제어: 이미 검증 중이면 대기
+            lock (tokenValidationLock)
+            {
+                if (isValidatingToken)
+                {
+                    LogDebug("Token validation already in progress");
+                    return isTokenValid;
+                }
+                isValidatingToken = true;
+            }
+
+            try
+            {
+                LogDebug("Validating token with server...");
+
+                // 하트비트 API로 토큰 유효성 확인
+                var response = await PostRequest<BaseResponse>("/api/devices/heartbeat", "{}", true);
+
+                if (response != null && response.success)
+                {
+                    LogDebug("Token validation successful ✅");
+                    isTokenValid = true;
+                    lastTokenValidation = DateTime.UtcNow;
+                    return true;
+                }
+                else
+                {
+                    LogDebug("Token validation failed: Server returned failure");
+                    isTokenValid = false;
+                    return false;
+                }
+            }
+            catch (AuthenticationException)
+            {
+                LogDebug("Token validation failed: Authentication error (401/403)");
+                isTokenValid = false;
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogDebug($"Token validation error: {ex.Message}");
+                // 네트워크 오류 등은 기존 상태 유지
+                return isTokenValid;
+            }
+            finally
+            {
+                lock (tokenValidationLock)
+                {
+                    isValidatingToken = false;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 토큰이 유효한지 확인하고, 유효하지 않으면 자동 로그인을 시도합니다.
+        /// </summary>
+        /// <returns>토큰 준비 완료 여부</returns>
+        private async Task<bool> EnsureValidTokenAsync()
+        {
+            // 1. 토큰 유효성 검사
+            bool tokenValid = await ValidateTokenAsync();
+
+            if (tokenValid)
+            {
+                return true;
+            }
+
+            // 2. 토큰이 유효하지 않으면 자동 재로그인 시도
+            LogDebug("Token invalid, attempting automatic re-login...");
+
+            bool reloginSuccess = await TryReloginAsync();
+
+            if (reloginSuccess)
+            {
+                // 재로그인 성공 - 토큰 유효 상태 업데이트
+                isTokenValid = true;
+                lastTokenValidation = DateTime.UtcNow;
+                LogDebug("Auto re-login successful, token is now valid ✅");
+                return true;
+            }
+            else
+            {
+                LogError("Auto re-login failed, cannot send logs");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 토큰 유효성 상태를 무효화합니다. (강제 재검증 필요)
+        /// </summary>
+        public void InvalidateToken()
+        {
+            isTokenValid = false;
+            lastTokenValidation = null;
+            LogDebug("Token invalidated, will re-validate on next request");
         }
 
         /// <summary>
