@@ -1028,9 +1028,37 @@ namespace VRLogDashboard
         /// </summary>
         public async Task<bool> SyncOfflineLogs()
         {
+            Log($"📤 SyncOfflineLogs manually called: IsLoggedIn={IsLoggedIn}, IsOnline={IsOnline}");
+
             if (!IsLoggedIn || !IsOnline)
             {
-                LogError("Cannot sync: Not logged in or offline");
+                LogError($"Cannot sync: IsLoggedIn={IsLoggedIn}, IsOnline={IsOnline}");
+                return false;
+            }
+
+            return await SyncAllOfflineLogs();
+        }
+
+        /// <summary>
+        /// 강제로 서버 연결을 확인하고 오프라인 로그를 동기화합니다.
+        /// </summary>
+        public async Task<bool> ForceSyncOfflineLogs()
+        {
+            Log("🔄 ForceSyncOfflineLogs called");
+
+            // 먼저 서버 연결 상태 확인
+            bool serverReachable = await CheckServerConnectivity();
+            Log($"📡 Server check result: {serverReachable}");
+
+            if (!serverReachable)
+            {
+                LogError("Cannot force sync: Server not reachable");
+                return false;
+            }
+
+            if (!IsLoggedIn)
+            {
+                LogError("Cannot force sync: Not logged in");
                 return false;
             }
 
@@ -2587,15 +2615,22 @@ namespace VRLogDashboard
                 // Network state changed
                 if (previousState != isNetworkAvailable)
                 {
-                    Log($"Network state changed: {(isNetworkAvailable ? "Online" : "Offline")}");
+                    Log($"🌐 Network state changed: {(isNetworkAvailable ? "Online ✅" : "Offline ❌")}");
                     OnNetworkStatusChanged?.Invoke(isNetworkAvailable);
 
                     // Network recovered
                     if (isNetworkAvailable)
                     {
-                        Log("Network recovered, checking server connectivity...");
+                        Log("🔄 Network recovered, checking server connectivity...");
                         // 서버 핑을 즉시 확인
                         _ = CheckServerConnectivity();
+                    }
+                    else
+                    {
+                        // 네트워크가 끊기면 서버 연결 상태도 false로 설정
+                        // 이렇게 해야 네트워크 복귀 시 상태 변경이 감지됨
+                        isServerReachable = false;
+                        Log("📡 Network offline, server marked as unreachable");
                     }
                 }
             }
