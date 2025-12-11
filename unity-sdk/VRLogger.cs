@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using KyoboDashboard;
@@ -60,6 +61,8 @@ namespace VRLogDashboard
         [Header("Local Storage Settings")]
         [SerializeField] private int maxRetryCount = 3;
         [SerializeField] private float networkCheckInterval = 10f;
+        [Tooltip("오프라인 로그 보관 일수 (이후 자동 삭제)")]
+        [SerializeField] private int offlineLogRetentionDays = 30;
 
         [Header("Network Settings")]
         [Tooltip("네트워크 요청 타임아웃 시간 (초)")]
@@ -68,10 +71,14 @@ namespace VRLogDashboard
         [SerializeField] private int delayBetweenRequests = 50;
         [Tooltip("재시도 전 대기 시간 (초)")]
         [SerializeField] private int retryDelaySeconds = 2;
+        [Tooltip("서버 연결 확인 간격 (초)")]
+        [SerializeField] private float serverPingInterval = 30f;
 
         [Header("Daily Log Archive")]
         [Tooltip("모든 로그를 날짜별로 로컬에 저장합니다")]
         [SerializeField] private bool enableDailyLogArchive = true;
+        [Tooltip("오프라인 시 로그를 날짜별 파일로 저장하고 네트워크 복구 시 자동 전송")]
+        [SerializeField] private bool enableOfflineSync = true;
         #endregion
 
         #region Private Fields
@@ -81,10 +88,14 @@ namespace VRLogDashboard
         private bool isProcessingQueue = false;
         private Coroutine heartbeatCoroutine;
         private Coroutine networkCheckCoroutine;
+        private Coroutine serverPingCoroutine;
         private bool isNetworkAvailable = true;
+        private bool isServerReachable = false;
         private string localLogFilePath;
         private string logsDirectoryPath;
+        private string offlineLogsDirectoryPath;
         private static readonly TimeSpan KoreanTimeOffset = TimeSpan.FromHours(9);
+        private bool isSyncingOfflineLogs = false;
 
         // 동시성 제어를 위한 lock 객체
         private readonly object queueLock = new object();
@@ -115,6 +126,9 @@ namespace VRLogDashboard
         public event Action OnSessionEnded;
         public event Action<string> OnError;
         public event Action<int> OnPendingLogsChanged;
+        public event Action<bool> OnNetworkStatusChanged;
+        public event Action<int, int> OnOfflineSyncProgress; // (synced, total)
+        public event Action<bool> OnOfflineSyncComplete;
         #endregion
 
         #region Properties
@@ -123,6 +137,10 @@ namespace VRLogDashboard
         public bool IsLoggedIn => !string.IsNullOrEmpty(authToken);
         public bool HasActiveSession => !string.IsNullOrEmpty(currentSessionId);
         public string CurrentSessionId => currentSessionId;
+        public bool IsNetworkAvailable => isNetworkAvailable;
+        public bool IsServerReachable => isServerReachable;
+        public bool IsOnline => isNetworkAvailable && isServerReachable;
+        public bool IsSyncingOfflineLogs => isSyncingOfflineLogs;
         public string ServerUrl
         {
             get => serverUrl;
@@ -192,6 +210,18 @@ namespace VRLogDashboard
                 Directory.CreateDirectory(logsDirectoryPath);
             }
             LogDebug($"Daily logs directory: {logsDirectoryPath}");
+
+            // Initialize offline logs directory (날짜별 미전송 로그 저장)
+            offlineLogsDirectoryPath = Path.Combine(Application.persistentDataPath, "offline_logs");
+            if (!Directory.Exists(offlineLogsDirectoryPath))
+            {
+                Directory.CreateDirectory(offlineLogsDirectoryPath);
+            }
+            LogDebug($"Offline logs directory: {offlineLogsDirectoryPath}");
+
+            // 오래된 오프라인 로그 정리
+            CleanupOldOfflineLogs();
+
             LogDebug($"Persistent data path: {Application.persistentDataPath}");
             LogDebug($"=== Initialization Complete ===");
         }
@@ -207,6 +237,10 @@ namespace VRLogDashboard
             // Start network monitoring
             LogDebug("Starting network monitoring...");
             StartNetworkMonitoring();
+
+            // Start server ping monitoring (실제 서버 연결 확인)
+            LogDebug("Starting server ping monitoring...");
+            StartServerPingMonitoring();
 
             // 저장된 세션 복원 시도
             _ = InitializeSessionAsync();
@@ -457,12 +491,21 @@ namespace VRLogDashboard
                     networkCheckCoroutine = null;
                 }
 
+                if (serverPingCoroutine != null)
+                {
+                    StopCoroutine(serverPingCoroutine);
+                    serverPingCoroutine = null;
+                }
+
                 // 이벤트 구독 해제 (메모리 누수 방지)
                 OnLoginComplete = null;
                 OnSessionStarted = null;
                 OnSessionEnded = null;
                 OnError = null;
                 OnPendingLogsChanged = null;
+                OnNetworkStatusChanged = null;
+                OnOfflineSyncProgress = null;
+                OnOfflineSyncComplete = null;
 
                 Log("VRLogger destroyed and resources cleaned up");
 
@@ -814,6 +857,95 @@ namespace VRLogDashboard
         }
 
         /// <summary>
+        /// 미전송 오프라인 로그 개수를 반환합니다.
+        /// </summary>
+        public int GetOfflineLogCount()
+        {
+            int count = 0;
+            if (Directory.Exists(offlineLogsDirectoryPath))
+            {
+                var files = Directory.GetFiles(offlineLogsDirectoryPath, "offline_*.json");
+                foreach (var file in files)
+                {
+                    var logs = LoadOfflineLogFile(file);
+                    count += logs.entries.Count(e => !e.synced);
+                }
+            }
+            return count;
+        }
+
+        /// <summary>
+        /// 미전송 오프라인 로그가 있는 날짜 목록을 반환합니다.
+        /// </summary>
+        public List<string> GetPendingOfflineLogDates()
+        {
+            var dates = new List<string>();
+
+            if (Directory.Exists(offlineLogsDirectoryPath))
+            {
+                var files = Directory.GetFiles(offlineLogsDirectoryPath, "offline_*.json");
+                foreach (var file in files)
+                {
+                    var logs = LoadOfflineLogFile(file);
+                    if (logs.entries.Any(e => !e.synced))
+                    {
+                        // offline_2024-12-11.json -> 2024-12-11
+                        var fileName = Path.GetFileNameWithoutExtension(file);
+                        var date = fileName.Replace("offline_", "");
+                        dates.Add(date);
+                    }
+                }
+                dates.Sort();
+                dates.Reverse();
+            }
+
+            return dates;
+        }
+
+        /// <summary>
+        /// 수동으로 오프라인 로그를 동기화합니다.
+        /// </summary>
+        public async Task<bool> SyncOfflineLogs()
+        {
+            if (!IsLoggedIn || !IsOnline)
+            {
+                LogError("Cannot sync: Not logged in or offline");
+                return false;
+            }
+
+            return await SyncAllOfflineLogs();
+        }
+
+        /// <summary>
+        /// 특정 날짜의 오프라인 로그를 동기화합니다.
+        /// </summary>
+        public async Task<bool> SyncOfflineLogsForDate(string date)
+        {
+            if (!IsLoggedIn || !IsOnline)
+            {
+                LogError("Cannot sync: Not logged in or offline");
+                return false;
+            }
+
+            var filePath = Path.Combine(offlineLogsDirectoryPath, $"offline_{date}.json");
+            if (!File.Exists(filePath))
+            {
+                LogDebug($"No offline logs found for date: {date}");
+                return true;
+            }
+
+            return await SyncOfflineLogFile(filePath);
+        }
+
+        /// <summary>
+        /// 오프라인 로그 저장 디렉토리 경로를 반환합니다.
+        /// </summary>
+        public string GetOfflineLogsDirectoryPath()
+        {
+            return offlineLogsDirectoryPath;
+        }
+
+        /// <summary>
         /// 로그 저장 디렉토리 경로를 반환합니다.
         /// </summary>
         public string GetLogsDirectoryPath()
@@ -958,6 +1090,15 @@ namespace VRLogDashboard
             if (enableDailyLogArchive)
             {
                 SaveToDailyLog(logRequest, koreanTime);
+            }
+
+            // 네트워크가 불안정하면 오프라인 저장소에 저장
+            if (!IsOnline && enableOfflineSync)
+            {
+                LogDebug($"Network unavailable, saving to offline storage: {endpoint}");
+                SaveToOfflineLog(logRequest, koreanTime);
+                OnPendingLogsChanged?.Invoke(GetPendingLogCount() + GetOfflineLogCount());
+                return true; // 오프라인 저장 성공으로 처리
             }
 
             bool shouldProcessQueue = false;
@@ -1869,6 +2010,15 @@ namespace VRLogDashboard
             networkCheckCoroutine = StartCoroutine(NetworkMonitorCoroutine());
         }
 
+        private void StartServerPingMonitoring()
+        {
+            if (serverPingCoroutine != null)
+            {
+                StopCoroutine(serverPingCoroutine);
+            }
+            serverPingCoroutine = StartCoroutine(ServerPingCoroutine());
+        }
+
         private IEnumerator NetworkMonitorCoroutine()
         {
             while (true)
@@ -1878,18 +2028,93 @@ namespace VRLogDashboard
                 var previousState = isNetworkAvailable;
                 isNetworkAvailable = Application.internetReachability != NetworkReachability.NotReachable;
 
-                // Network recovered
-                if (!previousState && isNetworkAvailable)
+                // Network state changed
+                if (previousState != isNetworkAvailable)
                 {
-                    Log("Network recovered, attempting to resend pending logs");
-                    _ = RetryPendingLogs();
+                    Log($"Network state changed: {(isNetworkAvailable ? "Online" : "Offline")}");
+                    OnNetworkStatusChanged?.Invoke(isNetworkAvailable);
+
+                    // Network recovered
+                    if (isNetworkAvailable)
+                    {
+                        Log("Network recovered, checking server connectivity...");
+                        // 서버 핑을 즉시 확인
+                        _ = CheckServerConnectivity();
+                    }
                 }
             }
         }
 
+        private IEnumerator ServerPingCoroutine()
+        {
+            // 시작 시 즉시 체크
+            var task = CheckServerConnectivity();
+            while (!task.IsCompleted) yield return null;
+
+            while (true)
+            {
+                yield return new WaitForSeconds(serverPingInterval);
+
+                if (isNetworkAvailable)
+                {
+                    var pingTask = CheckServerConnectivity();
+                    while (!pingTask.IsCompleted) yield return null;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 서버 연결 상태를 확인합니다.
+        /// </summary>
+        private async Task<bool> CheckServerConnectivity()
+        {
+            bool previousState = isServerReachable;
+
+            try
+            {
+                // 간단한 health check 요청
+                using (var request = UnityWebRequest.Get($"{serverUrl}/health"))
+                {
+                    request.timeout = 10; // 10초 타임아웃
+
+                    var operation = request.SendWebRequest();
+                    float elapsed = 0f;
+                    while (!operation.isDone && elapsed < 10f)
+                    {
+                        await Task.Delay(100);
+                        elapsed += 0.1f;
+                    }
+
+                    isServerReachable = request.result == UnityWebRequest.Result.Success;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogDebug($"Server connectivity check failed: {ex.Message}");
+                isServerReachable = false;
+            }
+
+            // 상태가 변경되었을 때
+            if (previousState != isServerReachable)
+            {
+                Log($"Server reachability changed: {(isServerReachable ? "Reachable" : "Unreachable")}");
+                OnNetworkStatusChanged?.Invoke(IsOnline);
+
+                // 서버에 연결되었을 때 오프라인 로그 동기화
+                if (isServerReachable && enableOfflineSync && IsLoggedIn)
+                {
+                    Log("Server became reachable, syncing offline logs...");
+                    _ = SyncAllOfflineLogs();
+                    _ = RetryPendingLogs();
+                }
+            }
+
+            return isServerReachable;
+        }
+
         private async Task RetryPendingLogs()
         {
-            if (!IsLoggedIn || !isNetworkAvailable) return;
+            if (!IsLoggedIn || !IsOnline) return;
 
             // Load any locally saved logs
             LoadPendingLogsFromLocal();
@@ -1969,6 +2194,359 @@ namespace VRLogDashboard
         {
             var json = JsonUtility.ToJson(logs, true);
             File.WriteAllText(filePath, json);
+        }
+
+        #endregion
+
+        #region Offline Log Sync
+
+        /// <summary>
+        /// 오프라인 로그 파일 경로를 반환합니다.
+        /// </summary>
+        private string GetOfflineLogFilePath(DateTime koreanDateTime)
+        {
+            var dateString = koreanDateTime.ToString("yyyy-MM-dd");
+            return Path.Combine(offlineLogsDirectoryPath, $"offline_{dateString}.json");
+        }
+
+        /// <summary>
+        /// 로그를 오프라인 파일에 저장합니다.
+        /// </summary>
+        private void SaveToOfflineLog(LogRequest request, DateTime koreanTime)
+        {
+            try
+            {
+                var offlineLogFile = GetOfflineLogFilePath(koreanTime);
+                var offlineLogs = LoadOfflineLogFile(offlineLogFile);
+
+                var entry = new OfflineLogEntry
+                {
+                    id = Guid.NewGuid().ToString(),
+                    timestamp = request.timestamp,
+                    endpoint = request.endpoint,
+                    body = request.body,
+                    session_id = currentSessionId ?? "",
+                    device_id = deviceId,
+                    synced = false,
+                    retryCount = 0
+                };
+
+                offlineLogs.entries.Add(entry);
+                SaveOfflineLogFile(offlineLogFile, offlineLogs);
+
+                LogDebug($"Saved log to offline storage: {koreanTime:yyyy-MM-dd} (Total: {offlineLogs.entries.Count})");
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to save offline log: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 오프라인 로그 파일을 로드합니다.
+        /// </summary>
+        private OfflineLogList LoadOfflineLogFile(string filePath)
+        {
+            if (File.Exists(filePath))
+            {
+                try
+                {
+                    var json = File.ReadAllText(filePath);
+                    return JsonUtility.FromJson<OfflineLogList>(json) ?? new OfflineLogList();
+                }
+                catch (Exception ex)
+                {
+                    LogError($"Failed to load offline log file: {ex.Message}");
+                }
+            }
+            return new OfflineLogList();
+        }
+
+        /// <summary>
+        /// 오프라인 로그 파일을 저장합니다.
+        /// </summary>
+        private void SaveOfflineLogFile(string filePath, OfflineLogList logs)
+        {
+            var json = JsonUtility.ToJson(logs, true);
+            File.WriteAllText(filePath, json);
+        }
+
+        /// <summary>
+        /// 모든 오프라인 로그를 동기화합니다.
+        /// </summary>
+        private async Task<bool> SyncAllOfflineLogs()
+        {
+            if (isSyncingOfflineLogs)
+            {
+                LogDebug("Offline sync already in progress");
+                return false;
+            }
+
+            if (!Directory.Exists(offlineLogsDirectoryPath))
+            {
+                return true;
+            }
+
+            isSyncingOfflineLogs = true;
+            bool allSynced = true;
+            int totalSynced = 0;
+            int totalFailed = 0;
+
+            try
+            {
+                var files = Directory.GetFiles(offlineLogsDirectoryPath, "offline_*.json")
+                    .OrderBy(f => f) // 날짜순 정렬 (오래된 것부터)
+                    .ToArray();
+
+                // 전체 미전송 로그 수 계산
+                int totalUnsyncedCount = 0;
+                foreach (var file in files)
+                {
+                    var logs = LoadOfflineLogFile(file);
+                    totalUnsyncedCount += logs.entries.Count(e => !e.synced);
+                }
+
+                if (totalUnsyncedCount == 0)
+                {
+                    LogDebug("No offline logs to sync");
+                    OnOfflineSyncComplete?.Invoke(true);
+                    return true;
+                }
+
+                Log($"Starting offline sync: {totalUnsyncedCount} logs in {files.Length} files");
+
+                foreach (var file in files)
+                {
+                    if (!IsOnline)
+                    {
+                        Log("Network disconnected during sync, stopping");
+                        allSynced = false;
+                        break;
+                    }
+
+                    var result = await SyncOfflineLogFile(file);
+                    if (!result)
+                    {
+                        allSynced = false;
+                    }
+
+                    // 진행 상황 업데이트
+                    var currentLogs = LoadOfflineLogFile(file);
+                    totalSynced += currentLogs.entries.Count(e => e.synced);
+                    totalFailed += currentLogs.entries.Count(e => !e.synced && e.retryCount >= maxRetryCount);
+                    OnOfflineSyncProgress?.Invoke(totalSynced, totalUnsyncedCount);
+                }
+
+                Log($"Offline sync completed: {totalSynced} synced, {totalFailed} failed");
+                OnOfflineSyncComplete?.Invoke(allSynced);
+
+                // 완전히 동기화된 파일 정리
+                CleanupSyncedOfflineFiles();
+            }
+            catch (Exception ex)
+            {
+                LogError($"Offline sync error: {ex.Message}");
+                allSynced = false;
+                OnOfflineSyncComplete?.Invoke(false);
+            }
+            finally
+            {
+                isSyncingOfflineLogs = false;
+            }
+
+            return allSynced;
+        }
+
+        /// <summary>
+        /// 특정 오프라인 로그 파일을 동기화합니다.
+        /// </summary>
+        private async Task<bool> SyncOfflineLogFile(string filePath)
+        {
+            if (!File.Exists(filePath)) return true;
+
+            var logs = LoadOfflineLogFile(filePath);
+            var unsyncedEntries = logs.entries.Where(e => !e.synced).ToList();
+
+            if (unsyncedEntries.Count == 0)
+            {
+                LogDebug($"No unsynced entries in {Path.GetFileName(filePath)}");
+                return true;
+            }
+
+            LogDebug($"Syncing {unsyncedEntries.Count} entries from {Path.GetFileName(filePath)}");
+
+            bool allSynced = true;
+
+            foreach (var entry in unsyncedEntries)
+            {
+                if (!IsOnline)
+                {
+                    LogDebug("Network disconnected, stopping sync");
+                    allSynced = false;
+                    break;
+                }
+
+                try
+                {
+                    // 세션 ID 업데이트 (현재 세션 사용)
+                    string body = entry.body;
+                    if (!string.IsNullOrEmpty(currentSessionId) && !string.IsNullOrEmpty(entry.session_id))
+                    {
+                        body = body.Replace(
+                            $"\"session_id\":\"{entry.session_id}\"",
+                            $"\"session_id\":\"{currentSessionId}\""
+                        );
+                    }
+
+                    var response = await PostRequest<BaseResponse>(entry.endpoint, body, true);
+
+                    if (response != null && response.success)
+                    {
+                        // 성공: 동기화 완료 표시
+                        entry.synced = true;
+                        entry.syncedAt = DateTime.UtcNow.Add(KoreanTimeOffset).ToString("yyyy-MM-dd HH:mm:ss");
+                        LogDebug($"Synced offline log: {entry.endpoint}");
+                    }
+                    else
+                    {
+                        throw new Exception("Server returned failure response");
+                    }
+                }
+                catch (SessionNotFoundException)
+                {
+                    // 세션 없음 - 새 세션 시작 후 재시도
+                    LogDebug("Session not found during sync, attempting to restart session");
+                    if (IsLoggedIn)
+                    {
+                        bool sessionStarted = await StartSession();
+                        if (!sessionStarted)
+                        {
+                            LogError("Failed to restart session during sync");
+                            allSynced = false;
+                            break;
+                        }
+                        // 재시도하지 않고 다음 동기화에서 처리
+                        entry.retryCount++;
+                    }
+                }
+                catch (AuthenticationException)
+                {
+                    // 인증 실패 - 재로그인 필요
+                    LogDebug("Authentication failed during sync, attempting relogin");
+                    bool reloginSuccess = await TryReloginAsync();
+                    if (!reloginSuccess)
+                    {
+                        LogError("Relogin failed during sync");
+                        allSynced = false;
+                        break;
+                    }
+                    // 재시도하지 않고 다음 동기화에서 처리
+                    entry.retryCount++;
+                }
+                catch (Exception ex)
+                {
+                    // 기타 오류
+                    entry.retryCount++;
+                    LogError($"Failed to sync offline log: {ex.Message}");
+
+                    if (entry.retryCount >= maxRetryCount)
+                    {
+                        LogError($"Offline log exceeded max retries, marking as failed");
+                    }
+
+                    allSynced = false;
+                }
+
+                // 요청 간 지연
+                await Task.Delay(delayBetweenRequests);
+            }
+
+            // 파일 업데이트
+            SaveOfflineLogFile(filePath, logs);
+
+            return allSynced;
+        }
+
+        /// <summary>
+        /// 완전히 동기화된 오프라인 로그 파일을 정리합니다.
+        /// </summary>
+        private void CleanupSyncedOfflineFiles()
+        {
+            try
+            {
+                if (!Directory.Exists(offlineLogsDirectoryPath)) return;
+
+                var files = Directory.GetFiles(offlineLogsDirectoryPath, "offline_*.json");
+                foreach (var file in files)
+                {
+                    var logs = LoadOfflineLogFile(file);
+
+                    // 모든 엔트리가 동기화되었거나 최대 재시도 초과한 경우 삭제
+                    bool canDelete = logs.entries.All(e => e.synced || e.retryCount >= maxRetryCount);
+
+                    if (canDelete)
+                    {
+                        File.Delete(file);
+                        LogDebug($"Deleted synced offline log file: {Path.GetFileName(file)}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to cleanup synced offline files: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 오래된 오프라인 로그 파일을 삭제합니다.
+        /// </summary>
+        private void CleanupOldOfflineLogs()
+        {
+            try
+            {
+                if (!Directory.Exists(offlineLogsDirectoryPath)) return;
+
+                var cutoffDate = DateTime.UtcNow.Add(KoreanTimeOffset).AddDays(-offlineLogRetentionDays);
+                var files = Directory.GetFiles(offlineLogsDirectoryPath, "offline_*.json");
+
+                foreach (var file in files)
+                {
+                    // offline_2024-12-11.json -> 2024-12-11
+                    var fileName = Path.GetFileNameWithoutExtension(file);
+                    var dateStr = fileName.Replace("offline_", "");
+
+                    if (DateTime.TryParse(dateStr, out DateTime fileDate))
+                    {
+                        if (fileDate < cutoffDate)
+                        {
+                            File.Delete(file);
+                            LogDebug($"Deleted old offline log file: {fileName} (older than {offlineLogRetentionDays} days)");
+                        }
+                    }
+                }
+
+                // 아카이브 로그도 정리
+                if (Directory.Exists(logsDirectoryPath))
+                {
+                    var archiveFiles = Directory.GetFiles(logsDirectoryPath, "*.json");
+                    foreach (var file in archiveFiles)
+                    {
+                        var fileName = Path.GetFileNameWithoutExtension(file);
+                        if (DateTime.TryParse(fileName, out DateTime fileDate))
+                        {
+                            if (fileDate < cutoffDate)
+                            {
+                                File.Delete(file);
+                                LogDebug($"Deleted old archive log file: {fileName}");
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to cleanup old offline logs: {ex.Message}");
+            }
         }
 
         #endregion
@@ -2121,6 +2699,26 @@ namespace VRLogDashboard
         public class DailyLogList
         {
             public List<DailyLogEntry> entries = new List<DailyLogEntry>();
+        }
+
+        [Serializable]
+        public class OfflineLogEntry
+        {
+            public string id;
+            public string timestamp;
+            public string endpoint;
+            public string body;
+            public string session_id;
+            public string device_id;
+            public bool synced;
+            public int retryCount;
+            public string syncedAt;
+        }
+
+        [Serializable]
+        public class OfflineLogList
+        {
+            public List<OfflineLogEntry> entries = new List<OfflineLogEntry>();
         }
 
         #endregion
