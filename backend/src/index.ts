@@ -28,34 +28,29 @@ async function bootstrap() {
     app.set('trust proxy', 1);
 
     // CORS
-    // Manual CORS handler with security restrictions
+    // Manual CORS handler with security restrictions using config
+    const allowedOrigins = config.cors.origins;
+    const isDevMode = config.nodeEnv !== 'production';
+
     app.use((req, res, next) => {
       const origin = req.headers.origin;
-
-      // Get allowed origins from environment variable
-      const allowedOrigins = (process.env.CORS_ORIGINS || '')
-        .split(',')
-        .map(o => o.trim())
-        .filter(o => o);
 
       // Determine if origin is allowed
       let isOriginAllowed = false;
 
-      if (allowedOrigins.length === 0) {
-        // Development mode: allow all origins if CORS_ORIGINS not set
+      if (isDevMode && allowedOrigins.length === 1 && allowedOrigins[0] === 'http://localhost:3000') {
+        // Development mode with default config: allow all origins
         isOriginAllowed = true;
         res.header('Access-Control-Allow-Origin', origin || '*');
         logger.debug('CORS: Development mode - allowing all origins');
-      } else {
-        // Production mode: only allow specified origins
-        if (origin && allowedOrigins.includes(origin)) {
-          isOriginAllowed = true;
-          res.header('Access-Control-Allow-Origin', origin);
-          logger.debug('CORS: Origin allowed', { origin });
-        } else {
-          logger.warn('CORS: Origin blocked', { origin, allowedOrigins });
-          // Don't set Access-Control-Allow-Origin header for blocked origins
-        }
+      } else if (origin && allowedOrigins.includes(origin)) {
+        // Origin is in the allowed list
+        isOriginAllowed = true;
+        res.header('Access-Control-Allow-Origin', origin);
+        logger.debug('CORS: Origin allowed', { origin });
+      } else if (origin) {
+        // Origin not allowed - log warning
+        logger.warn('CORS: Origin blocked', { origin, allowedOrigins });
       }
 
       // Set other CORS headers only if origin is allowed

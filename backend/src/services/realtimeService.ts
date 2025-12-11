@@ -9,10 +9,16 @@ let io: SocketServer | null = null;
 
 export class RealtimeService {
   static initialize(server: HttpServer): SocketServer {
+    // Support multiple CORS origins for Socket.io
+    const corsOrigin = config.cors.origins.length === 1
+      ? config.cors.origins[0]
+      : config.cors.origins;
+
     io = new SocketServer(server, {
       cors: {
-        origin: config.cors.origin,
+        origin: corsOrigin,
         methods: ['GET', 'POST'],
+        credentials: true,
       },
       pingTimeout: 60000,
       pingInterval: 25000,
