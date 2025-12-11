@@ -61,8 +61,8 @@ namespace VRLogDashboard
         [Header("Local Storage Settings")]
         [SerializeField] private int maxRetryCount = 3;
         [SerializeField] private float networkCheckInterval = 10f;
-        [Tooltip("오프라인 로그 보관 일수 (이후 자동 삭제)")]
-        [SerializeField] private int offlineLogRetentionDays = 30;
+        [Tooltip("오프라인 로그 보관 일수 (0이면 영구 보관)")]
+        [SerializeField] private int offlineLogRetentionDays = 0;
 
         [Header("Network Settings")]
         [Tooltip("네트워크 요청 타임아웃 시간 (초)")]
@@ -2504,6 +2504,9 @@ namespace VRLogDashboard
         {
             try
             {
+                // 0이면 영구 보관 (삭제하지 않음)
+                if (offlineLogRetentionDays <= 0) return;
+
                 if (!Directory.Exists(offlineLogsDirectoryPath)) return;
 
                 var cutoffDate = DateTime.UtcNow.Add(KoreanTimeOffset).AddDays(-offlineLogRetentionDays);
@@ -2525,7 +2528,7 @@ namespace VRLogDashboard
                     }
                 }
 
-                // 아카이브 로그도 정리
+                // 아카이브 로그도 정리 (offlineLogRetentionDays 기준)
                 if (Directory.Exists(logsDirectoryPath))
                 {
                     var archiveFiles = Directory.GetFiles(logsDirectoryPath, "*.json");
@@ -2542,6 +2545,57 @@ namespace VRLogDashboard
                         }
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to cleanup old offline logs: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 수동으로 오래된 로그 파일을 정리합니다.
+        /// </summary>
+        /// <param name="retentionDays">보관 일수 (이전 로그 삭제)</param>
+        public void CleanupOldLogs(int retentionDays)
+        {
+            if (retentionDays <= 0) return;
+
+            try
+            {
+                var cutoffDate = DateTime.UtcNow.Add(KoreanTimeOffset).AddDays(-retentionDays);
+
+                // 오프라인 로그 정리
+                if (Directory.Exists(offlineLogsDirectoryPath))
+                {
+                    var files = Directory.GetFiles(offlineLogsDirectoryPath, "offline_*.json");
+                    foreach (var file in files)
+                    {
+                        var fileName = Path.GetFileNameWithoutExtension(file);
+                        var dateStr = fileName.Replace("offline_", "");
+                        if (DateTime.TryParse(dateStr, out DateTime fileDate) && fileDate < cutoffDate)
+                        {
+                            File.Delete(file);
+                            LogDebug($"Manually deleted old offline log: {fileName}");
+                        }
+                    }
+                }
+
+                // 아카이브 로그 정리
+                if (Directory.Exists(logsDirectoryPath))
+                {
+                    var archiveFiles = Directory.GetFiles(logsDirectoryPath, "*.json");
+                    foreach (var file in archiveFiles)
+                    {
+                        var fileName = Path.GetFileNameWithoutExtension(file);
+                        if (DateTime.TryParse(fileName, out DateTime fileDate) && fileDate < cutoffDate)
+                        {
+                            File.Delete(file);
+                            LogDebug($"Manually deleted old archive log: {fileName}");
+                        }
+                    }
+                }
+
+                Log($"Cleaned up logs older than {retentionDays} days");
             }
             catch (Exception ex)
             {
