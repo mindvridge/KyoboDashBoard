@@ -137,19 +137,26 @@ export class SchedulerService {
   private static async cleanupOldLogs(): Promise<void> {
     try {
       const retentionDays = parseInt(process.env.LOG_RETENTION_DAYS || '90', 10);
+
+      // Validate retention days to prevent SQL injection
+      if (isNaN(retentionDays) || retentionDays < 1 || retentionDays > 3650) {
+        throw new Error('LOG_RETENTION_DAYS must be a number between 1 and 3650');
+      }
+
+      // Use parameterized query with safe interval calculation
       const sql = `
         DELETE FROM content_logs
-        WHERE timestamp < NOW() - INTERVAL '${retentionDays} days'
+        WHERE timestamp < NOW() - ($1 || ' days')::INTERVAL
       `;
-      await query(sql);
+      await query(sql, [retentionDays]);
       logger.info('Cleaned up old content logs', { retention_days: retentionDays });
 
       // Also clean up error logs
       const errorSql = `
         DELETE FROM error_logs
-        WHERE timestamp < NOW() - INTERVAL '${retentionDays} days'
+        WHERE timestamp < NOW() - ($1 || ' days')::INTERVAL
       `;
-      await query(errorSql);
+      await query(errorSql, [retentionDays]);
       logger.info('Cleaned up old error logs');
     } catch (error) {
       logger.error('Failed to cleanup old logs', { error });

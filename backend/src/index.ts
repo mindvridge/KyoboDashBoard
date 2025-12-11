@@ -37,6 +37,18 @@ async function bootstrap() {
       let isOriginAllowed = false;
 
       if (allowedOrigins.length === 0) {
+        // Production 환경에서는 CORS_ORIGINS 필수
+        if (config.nodeEnv === 'production') {
+          logger.error('CORS_ORIGINS not set in production - blocking all requests');
+          return res.status(403).json({
+            success: false,
+            error: {
+              code: 'CORS_NOT_CONFIGURED',
+              message: 'CORS is not properly configured'
+            }
+          });
+        }
+
         // Development mode: allow all origins if CORS_ORIGINS not set
         isOriginAllowed = true;
         res.header('Access-Control-Allow-Origin', origin || '*');

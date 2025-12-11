@@ -40,7 +40,13 @@ export const config = {
   },
 
   jwt: {
-    secret: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
+    secret: process.env.JWT_SECRET || (() => {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('JWT_SECRET environment variable is required in production');
+      }
+      console.warn('⚠️  WARNING: Using default JWT_SECRET for development. Set JWT_SECRET in production!');
+      return 'dev-only-insecure-secret-change-in-production';
+    })(),
     expiresIn: process.env.JWT_EXPIRES_IN || '24h',
   },
 
@@ -59,10 +65,34 @@ export const config = {
 };
 
 export function validateConfig(): void {
-  const requiredVars = ['JWT_SECRET'];
-  const missing = requiredVars.filter(v => !process.env[v] && config.nodeEnv === 'production');
+  // Production 환경에서 필수 환경변수 체크
+  if (config.nodeEnv === 'production') {
+    const requiredVars = ['JWT_SECRET', 'CORS_ORIGINS'];
+    const missing = requiredVars.filter(v => !process.env[v]);
 
-  if (missing.length > 0) {
-    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+    if (missing.length > 0) {
+      throw new Error(`Missing required environment variables in production: ${missing.join(', ')}`);
+    }
+
+    // JWT Secret 최소 길이 체크 (32자 이상 권장)
+    if (process.env.JWT_SECRET && process.env.JWT_SECRET.length < 32) {
+      throw new Error('JWT_SECRET must be at least 32 characters long for security');
+    }
+
+    // CORS Origins 검증
+    if (process.env.CORS_ORIGINS) {
+      const origins = process.env.CORS_ORIGINS.split(',').map(o => o.trim()).filter(o => o);
+      if (origins.length === 0) {
+        throw new Error('CORS_ORIGINS is set but empty in production');
+      }
+      // URL 형식 검증
+      origins.forEach(origin => {
+        try {
+          new URL(origin);
+        } catch {
+          throw new Error(`Invalid CORS origin: ${origin}. Must be a valid URL (e.g., https://example.com)`);
+        }
+      });
+    }
   }
 }
