@@ -2601,8 +2601,8 @@ namespace VRLogDashboard
 
             try
             {
-                // 간단한 health check 요청
-                using (var request = UnityWebRequest.Get($"{serverUrl}/health"))
+                // 간단한 health check 요청 (백엔드는 /api 접두사 사용)
+                using (var request = UnityWebRequest.Get($"{serverUrl}/api/health"))
                 {
                     request.timeout = 10; // 10초 타임아웃
 
@@ -2615,6 +2615,11 @@ namespace VRLogDashboard
                     }
 
                     isServerReachable = request.result == UnityWebRequest.Result.Success;
+
+                    if (!isServerReachable)
+                    {
+                        LogDebug($"Health check failed: {request.result}, error: {request.error}, responseCode: {request.responseCode}");
+                    }
                 }
             }
             catch (Exception ex)
