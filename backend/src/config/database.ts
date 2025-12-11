@@ -10,7 +10,7 @@ const poolConfig: PoolConfig = {
   password: config.db.password,
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 30000,
   // SSL for Railway/production
   ssl: config.db.ssl ? { rejectUnauthorized: false } : false,
 };

@@ -2,7 +2,14 @@ import { SessionModel } from '../models/session';
 import { ContentLogModel } from '../models/contentLog';
 import { DeviceModel } from '../models/device';
 import { SpaceModel } from '../models/space';
-import { DashboardStats } from '../types';
+import {
+  DashboardStats,
+  PopularContentRow,
+  SpaceStatsRow,
+  HourlyDistributionRow,
+  SessionExportRow,
+  ContentLogExportRow,
+} from '../types';
 import { cacheGet, cacheSet } from '../config/redis';
 import { logger } from '../utils/logger';
 
@@ -40,13 +47,13 @@ export class StatsService {
       active_sessions: activeSessions,
       total_sessions_today: todaySessionCount,
       total_watch_time_today: totalWatchTime,
-      popular_contents: popularContents.map((c: any) => ({
+      popular_contents: (popularContents as PopularContentRow[]).map((c) => ({
         content_id: c.content_id,
         content_name: c.content_name,
         view_count: parseInt(c.view_count, 10),
         total_watch_time: parseInt(c.total_watch_time || '0', 10),
       })),
-      space_stats: spaces.map((s: any) => ({
+      space_stats: (spaces as SpaceStatsRow[]).map((s) => ({
         space_id: s.id,
         space_name: s.name,
         active_devices: parseInt(s.device_count || '0', 10),
@@ -54,7 +61,7 @@ export class StatsService {
         avg_session_duration: 0, // Would need separate query
       })),
       hourly_sessions: Array.from({ length: 24 }, (_, hour) => {
-        const found = (hourlyDistribution as Array<{ hour: string; session_count: string }>).find(h => parseInt(h.hour, 10) === hour);
+        const found = (hourlyDistribution as HourlyDistributionRow[]).find(h => parseInt(h.hour, 10) === hour);
         return {
           hour,
           session_count: found ? parseInt(found.session_count, 10) : 0,
@@ -118,7 +125,7 @@ export class StatsService {
       options?.deviceId
     );
 
-    return sessions.map((s: any) => ({
+    return (sessions as SessionExportRow[]).map((s) => ({
       session_id: s.id,
       device_id: s.device_info,
       space_name: s.space_name,
@@ -135,7 +142,7 @@ export class StatsService {
   }) {
     const logs = await ContentLogModel.getLogsByDateRange(startDate, endDate, options);
 
-    return logs.map((l: any) => ({
+    return (logs as ContentLogExportRow[]).map((l) => ({
       log_id: l.id,
       session_id: l.session_id,
       device_id: l.device_info,

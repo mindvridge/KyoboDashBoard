@@ -111,6 +111,20 @@ export interface ChartDataPoint {
   [key: string]: unknown;
 }
 
+export interface DailyStatsData {
+  date: string;
+  total_events: number;
+  unique_sessions: number;
+  total_watch_time: number; // in minutes
+}
+
+export interface DailyStatsRaw {
+  date: string;
+  total_events: string;
+  unique_sessions: string;
+  total_watch_time: string;
+}
+
 // Filter Types
 export interface DateFilter {
   startDate: Date;

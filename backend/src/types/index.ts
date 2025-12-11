@@ -189,3 +189,52 @@ export type AlertType =
   | 'DEVICE_ERROR'
   | 'CONNECTION_LOST'
   | 'HIGH_ERROR_RATE';
+
+// Database Query Result Types
+export interface PopularContentRow {
+  content_id: string;
+  content_name: string;
+  view_count: string; // PostgreSQL returns bigint as string
+  total_watch_time: string;
+}
+
+export interface SpaceStatsRow {
+  id: string;
+  name: string;
+  device_count: string;
+  active_sessions: string;
+}
+
+export interface HourlyDistributionRow {
+  hour: string;
+  session_count: string;
+}
+
+export interface SessionExportRow {
+  id: string;
+  device_info: string;
+  space_name: string;
+  start_time: Date;
+  end_time: Date | null;
+  duration: number | null;
+  lobby_time: number | null;
+}
+
+export interface ContentLogExportRow {
+  id: string;
+  session_id: string;
+  device_info: string;
+  space_name: string;
+  content_id: string;
+  content_name: string;
+  action_type: ContentActionType;
+  timestamp: Date;
+  duration: number | null;
+}
+
+export interface DailyStatsRow {
+  date: string;
+  total_events: string;
+  unique_sessions: string;
+  total_watch_time: string;
+}

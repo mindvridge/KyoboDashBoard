@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/Select';
 import { statsApi, spacesApi } from '@/utils/api';
 import { formatNumber, formatDuration } from '@/utils/format';
 import { format, subDays } from 'date-fns';
+import { Space, DailyStatsData, DailyStatsRaw, PopularContent } from '@/types';
 import {
   LineChart,
   Line,
@@ -25,9 +26,9 @@ import { Download, Calendar } from 'lucide-react';
 export default function AnalyticsPage() {
   const [dateRange, setDateRange] = useState('7');
   const [spaceId, setSpaceId] = useState('');
-  const [spaces, setSpaces] = useState<any[]>([]);
-  const [dailyStats, setDailyStats] = useState<any[]>([]);
-  const [popularContents, setPopularContents] = useState<any[]>([]);
+  const [spaces, setSpaces] = useState<Space[]>([]);
+  const [dailyStats, setDailyStats] = useState<DailyStatsData[]>([]);
+  const [popularContents, setPopularContents] = useState<PopularContent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -64,12 +65,11 @@ export default function AnalyticsPage() {
         ]);
 
         if (dailyRes.success) {
-          setDailyStats(dailyRes.data.map((d: any) => ({
-            ...d,
+          setDailyStats(dailyRes.data.map((d: DailyStatsRaw) => ({
             date: format(new Date(d.date), 'MM/dd'),
             total_events: parseInt(d.total_events),
             unique_sessions: parseInt(d.unique_sessions),
-            total_watch_time: Math.round(parseInt(d.total_watch_time || 0) / 60),
+            total_watch_time: Math.round(parseInt(d.total_watch_time || '0') / 60),
           })));
         }
 
