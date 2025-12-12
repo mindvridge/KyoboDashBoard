@@ -653,77 +653,143 @@ namespace VRLogDashboard
 
         /// <summary>
         /// 지정된 기기 정보로 자동 등록 및 로그인합니다.
+        /// Rate Limit (429) 오류 시 Exponential Backoff로 재시도합니다.
         /// </summary>
         public async Task<bool> AutoLogin(string deviceId)
         {
-            try
+            int retryCount = 0;
+            int maxAutoLoginRetries = 5; // AutoLogin 전용 최대 재시도 횟수
+
+            while (retryCount < maxAutoLoginRetries)
             {
-                LogDebug($"=== Starting AutoLogin ===");
-                LogDebug($"Device ID: {deviceId}");
-                LogDebug($"Server URL: {serverUrl}");
-                LogDebug($"Network Reachability: {Application.internetReachability}");
-
-                var request = new DeviceRegistrationRequest
+                try
                 {
-                    device_id = deviceId,
-                };
+                    LogDebug($"=== Starting AutoLogin (attempt {retryCount + 1}/{maxAutoLoginRetries}) ===");
+                    LogDebug($"Device ID: {deviceId}");
+                    LogDebug($"Server URL: {serverUrl}");
+                    LogDebug($"Network Reachability: {Application.internetReachability}");
 
-                var requestJson = JsonUtility.ToJson(request);
-                LogDebug($"Request JSON: {requestJson}");
+                    var request = new DeviceRegistrationRequest
+                    {
+                        device_id = deviceId,
+                    };
 
-                var response = await PostRequest<DeviceRegistrationResponse>(
-                    "/api/devices/register",
-                    requestJson,
-                    false
-                );
+                    var requestJson = JsonUtility.ToJson(request);
+                    LogDebug($"Request JSON: {requestJson}");
 
-                if (response != null && response.success)
-                {
-                    authToken = response.token;
-                    LogDebug($"Auth token received: {(string.IsNullOrEmpty(authToken) ? "null" : authToken.Substring(0, Math.Min(10, authToken.Length)))}...");
+                    var response = await PostRequest<DeviceRegistrationResponse>(
+                        "/api/devices/register",
+                        requestJson,
+                        false
+                    );
 
-                    // 토큰 유효 상태 업데이트
-                    isTokenValid = true;
-                    lastTokenValidation = DateTime.UtcNow;
+                    if (response != null && response.success)
+                    {
+                        authToken = response.token;
+                        LogDebug($"Auth token received: {(string.IsNullOrEmpty(authToken) ? "null" : authToken.Substring(0, Math.Min(10, authToken.Length)))}...");
 
-                    // 서버 통신 성공 = 서버 연결 가능 확인됨
-                    MarkServerAsReachable();
+                        // 토큰 유효 상태 업데이트
+                        isTokenValid = true;
+                        lastTokenValidation = DateTime.UtcNow;
 
-                    Log($"Device registered: {response.device.device_id}, New: {response.is_new_device}");
+                        // 서버 통신 성공 = 서버 연결 가능 확인됨
+                        MarkServerAsReachable();
 
-                    OnLoginComplete?.Invoke(true);
+                        Log($"Device registered: {response.device.device_id}, New: {response.is_new_device}");
 
-                    // Start session automatically
-                    LogDebug("Starting session...");
-                    await StartSession();
+                        OnLoginComplete?.Invoke(true);
 
-                    // 세션 로컬 저장
-                    SaveSessionToLocal();
+                        // Start session automatically
+                        LogDebug("Starting session...");
+                        await StartSession();
 
-                    // Start heartbeat
-                    LogDebug("Starting heartbeat...");
-                    StartHeartbeat();
+                        // 세션 로컬 저장
+                        SaveSessionToLocal();
 
-                    // Try to send any pending logs after successful login
-                    LogDebug("Retrying pending logs...");
-                    _ = RetryPendingLogs();
+                        // Start heartbeat
+                        LogDebug("Starting heartbeat...");
+                        StartHeartbeat();
 
-                    LogDebug("=== AutoLogin Successful ===");
-                    return true;
+                        // Try to send any pending logs after successful login
+                        LogDebug("Retrying pending logs...");
+                        _ = RetryPendingLogs();
+
+                        LogDebug("=== AutoLogin Successful ===");
+                        return true;
+                    }
+
+                    LogError("AutoLogin failed: Response was null or not successful");
+                    LogDebug($"Response: {(response == null ? "null" : $"success={response.success}")}");
+                    OnLoginComplete?.Invoke(false);
+                    return false;
                 }
+                catch (RateLimitException)
+                {
+                    retryCount++;
+                    if (retryCount >= maxAutoLoginRetries)
+                    {
+                        LogError($"AutoLogin failed: Rate limit exceeded after {maxAutoLoginRetries} retries");
+                        OnLoginComplete?.Invoke(false);
+                        return false;
+                    }
 
-                LogError("AutoLogin failed: Response was null or not successful");
-                LogDebug($"Response: {(response == null ? "null" : $"success={response.success}")}");
-                OnLoginComplete?.Invoke(false);
-                return false;
+                    // Exponential backoff: 2, 4, 8, 16, 32초 (최대 60초)
+                    int backoffSeconds = (int)Math.Pow(2, retryCount);
+                    backoffSeconds = Math.Min(backoffSeconds, 60);
+
+                    Log($"⚠️ AutoLogin rate limited, waiting {backoffSeconds}s before retry ({retryCount}/{maxAutoLoginRetries})");
+                    await Task.Delay(backoffSeconds * 1000);
+                    // 루프 계속 - 재시도
+                }
+                catch (ServerException serverEx) when (serverEx.IsRetryable)
+                {
+                    retryCount++;
+                    if (retryCount >= maxAutoLoginRetries)
+                    {
+                        LogError($"AutoLogin failed: Server error after {maxAutoLoginRetries} retries");
+                        OnLoginComplete?.Invoke(false);
+                        return false;
+                    }
+
+                    // Exponential backoff
+                    int backoffSeconds = (int)Math.Pow(2, retryCount);
+                    backoffSeconds = Math.Min(backoffSeconds, 60);
+
+                    Log($"⚠️ AutoLogin server error (retryable), waiting {backoffSeconds}s before retry ({retryCount}/{maxAutoLoginRetries})");
+                    await Task.Delay(backoffSeconds * 1000);
+                    // 루프 계속 - 재시도
+                }
+                catch (NetworkException)
+                {
+                    retryCount++;
+                    if (retryCount >= maxAutoLoginRetries)
+                    {
+                        LogError($"AutoLogin failed: Network error after {maxAutoLoginRetries} retries");
+                        OnLoginComplete?.Invoke(false);
+                        return false;
+                    }
+
+                    // Exponential backoff
+                    int backoffSeconds = (int)Math.Pow(2, retryCount);
+                    backoffSeconds = Math.Min(backoffSeconds, 60);
+
+                    Log($"⚠️ AutoLogin network error, waiting {backoffSeconds}s before retry ({retryCount}/{maxAutoLoginRetries})");
+                    await Task.Delay(backoffSeconds * 1000);
+                    // 루프 계속 - 재시도
+                }
+                catch (Exception ex)
+                {
+                    // 기타 예외는 재시도하지 않음
+                    LogError($"AutoLogin exception: {ex.GetType().Name}: {ex.Message}");
+                    LogDebug($"Stack trace: {ex.StackTrace}");
+                    OnLoginComplete?.Invoke(false);
+                    return false;
+                }
             }
-            catch (Exception ex)
-            {
-                LogError($"AutoLogin exception: {ex.GetType().Name}: {ex.Message}");
-                LogDebug($"Stack trace: {ex.StackTrace}");
-                OnLoginComplete?.Invoke(false);
-                return false;
-            }
+
+            LogError("AutoLogin failed: Max retries exceeded");
+            OnLoginComplete?.Invoke(false);
+            return false;
         }
 
         /// <summary>
