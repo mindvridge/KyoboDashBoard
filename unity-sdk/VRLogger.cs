@@ -884,28 +884,25 @@ namespace VRLogDashboard
         /// </summary>
         public async Task<bool> LogWatchStartAsync(string contentId, string contentName)
         {
-            // 중복 전송 방지: 이미 처리되었으면 스킵
+            // 중복 전송 방지: 이미 온라인으로 전송 확인된 경우만 스킵
             if (watchStartSentOnline.ContainsKey(contentId) && watchStartSentOnline[contentId])
             {
-                Log($"⚠️ WATCH_START already processed for contentId={contentId}, skipping duplicate");
-                return true; // 이미 성공으로 처리
+                Log($"⚠️ WATCH_START already sent online for contentId={contentId}, skipping duplicate");
+                return true;
             }
 
             bool result = await LogWatchEvent(contentId, contentName, "WATCH_START", 0);
 
-            // 성공적으로 처리되었으면 플래그 설정 (온라인 전송 또는 오프라인 저장 모두 포함)
-            // 오프라인 저장된 경우도 나중에 동기화되므로 재전송 방지를 위해 플래그 설정
-            if (result)
+            // 온라인에서 성공적으로 전송되었을 때만 플래그 설정
+            // 오프라인 저장된 경우는 동기화 성공 여부를 나중에 확인해야 하므로 플래그 설정 안 함
+            if (result && IsOnline)
             {
                 watchStartSentOnline[contentId] = true;
-                if (IsOnline)
-                {
-                    Log($"✅ WATCH_START sent online for contentId={contentId}");
-                }
-                else
-                {
-                    Log($"📥 WATCH_START saved to offline storage for contentId={contentId}, will sync later");
-                }
+                Log($"✅ WATCH_START sent online for contentId={contentId}");
+            }
+            else if (result)
+            {
+                Log($"📥 WATCH_START saved to offline storage for contentId={contentId}");
             }
 
             return result;
@@ -3495,10 +3492,10 @@ namespace VRLogDashboard
         /// 특정 콘텐츠의 시청 시작(WATCH_START) 로그를 오프라인 로그에서 찾아 우선 동기화합니다.
         /// 시청 완료 전에 호출하여 시청 시작 로그가 먼저 서버에 도착하도록 보장합니다.
         /// </summary>
-        /// <returns>동기화 성공 여부</returns>
+        /// <returns>WATCH_START가 서버에 있음이 확인되면 true (이미 동기화됨 또는 지금 동기화 성공)</returns>
         private async Task<bool> SyncWatchStartLogForContent(string contentId)
         {
-            if (!Directory.Exists(offlineLogsDirectoryPath)) return true;
+            if (!Directory.Exists(offlineLogsDirectoryPath)) return false; // 오프라인 디렉토리 없음 = 오프라인 저장 안 됨
 
             try
             {
@@ -3509,18 +3506,25 @@ namespace VRLogDashboard
                 foreach (var file in files)
                 {
                     var logs = LoadOfflineLogFile(file);
-                    
-                    // 해당 콘텐츠의 미동기화된 WATCH_START 로그 찾기
-                    var watchStartEntry = logs.entries.FirstOrDefault(e => 
-                        !e.synced && 
+
+                    // 해당 콘텐츠의 WATCH_START 로그 찾기 (동기화 여부 상관없이)
+                    var watchStartEntry = logs.entries.FirstOrDefault(e =>
                         e.endpoint == "/api/logs/content-watch" &&
                         e.body.Contains($"\"content_id\":\"{contentId}\"") &&
                         e.body.Contains("\"action_type\":\"WATCH_START\""));
 
                     if (watchStartEntry != null)
                     {
+                        // 이미 동기화된 경우 - 재전송 불필요
+                        if (watchStartEntry.synced)
+                        {
+                            Log($"✅ WATCH_START already synced for contentId={contentId}, no resend needed");
+                            return true;
+                        }
+
+                        // 미동기화된 경우 - 지금 동기화
                         Log($"🔍 Found unsynced WATCH_START log for contentId={contentId}, syncing now...");
-                        
+
                         // 세션 ID 업데이트
                         string body = watchStartEntry.body;
                         if (!string.IsNullOrEmpty(currentSessionId) && !string.IsNullOrEmpty(watchStartEntry.session_id))
@@ -3534,7 +3538,7 @@ namespace VRLogDashboard
                         try
                         {
                             var response = await PostRequest<BaseResponse>(watchStartEntry.endpoint, body, true);
-                            
+
                             if (response != null && response.success)
                             {
                                 // 성공: 동기화 완료 표시
@@ -3542,16 +3546,16 @@ namespace VRLogDashboard
                                 watchStartEntry.syncedAt = DateTime.UtcNow.Add(KoreanTimeOffset).ToString("yyyy-MM-dd HH:mm:ss");
                                 SaveOfflineLogFile(file, logs);
                                 Log($"✅ Synced WATCH_START log for contentId={contentId} before WATCH_END");
-                                return true; // 하나만 동기화하면 됨
+                                return true; // 동기화 성공
                             }
                             else
                             {
-                                Log($"⚠️ Failed to sync WATCH_START log for contentId={contentId}, will continue with WATCH_END");
+                                Log($"⚠️ Failed to sync WATCH_START log for contentId={contentId}, will resend");
                             }
                         }
                         catch (Exception ex)
                         {
-                            Log($"⚠️ Error syncing WATCH_START log for contentId={contentId}: {ex.Message}, will continue with WATCH_END");
+                            Log($"⚠️ Error syncing WATCH_START log for contentId={contentId}: {ex.Message}, will resend");
                         }
                     }
                 }
