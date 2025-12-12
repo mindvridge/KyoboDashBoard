@@ -897,6 +897,13 @@ namespace VRLogDashboard
             }
             lastWatchEndTimes[contentId] = currentTime;
 
+            // watchStartTimes에 시작 시간이 없으면 WATCH_START가 호출되지 않은 것
+            if (!watchStartTimes.ContainsKey(contentId))
+            {
+                Log($"⚠️ LogWatchEnd: No WATCH_START found for contentId={contentId}. Skipping WATCH_END to prevent 0 duration log.");
+                return false;
+            }
+
             // 시청 완료 전에 해당 콘텐츠의 시청 시작 로그가 오프라인에 있으면 먼저 동기화
             bool watchStartSynced = false;
             if (IsOnline && enableOfflineSync && IsLoggedIn && HasActiveSession)
@@ -907,8 +914,8 @@ namespace VRLogDashboard
             // 온라인에서 이미 전송되었는지 확인
             bool alreadySentOnline = watchStartSentOnline.ContainsKey(contentId) && watchStartSentOnline[contentId];
 
-            // 오프라인 로그에서 동기화되지 않았고, 온라인으로도 전송되지 않았으며, watchStartTimes에 기록되어 있으면 시청 시작 로그를 강제로 재전송
-            if (!watchStartSynced && !alreadySentOnline && watchStartTimes.ContainsKey(contentId))
+            // 오프라인 로그에서 동기화되지 않았고, 온라인으로도 전송되지 않았으면 시청 시작 로그를 강제로 재전송
+            if (!watchStartSynced && !alreadySentOnline)
             {
                 Log($"⚠️ WATCH_START not synced from offline and not sent online for contentId={contentId}, resending WATCH_START...");
                 await LogWatchStartAsync(contentId, contentName);
@@ -920,11 +927,20 @@ namespace VRLogDashboard
                 Log($"✅ WATCH_START already sent online for contentId={contentId}, skipping resend");
             }
 
-            float duration = 0;
-            if (watchStartTimes.ContainsKey(contentId))
+            // duration 계산
+            float duration = Time.realtimeSinceStartup - watchStartTimes[contentId];
+            watchStartTimes.Remove(contentId);
+
+            // 최소 시청 시간 체크 (1초 미만이면 무시)
+            if (duration < 1.0f)
             {
-                duration = Time.realtimeSinceStartup - watchStartTimes[contentId];
-                watchStartTimes.Remove(contentId);
+                Log($"⚠️ LogWatchEnd: Duration too short ({duration:F2}s) for contentId={contentId}. Skipping WATCH_END.");
+                // 플래그 정리
+                if (watchStartSentOnline.ContainsKey(contentId))
+                {
+                    watchStartSentOnline.Remove(contentId);
+                }
+                return false;
             }
 
             // 플래그 정리
@@ -932,7 +948,7 @@ namespace VRLogDashboard
             {
                 watchStartSentOnline.Remove(contentId);
             }
-            
+
             return await LogWatchEvent(contentId, contentName, "WATCH_END", duration);
         }
 
