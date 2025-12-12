@@ -287,12 +287,13 @@ namespace VRLogDashboard
             LogDebug("Starting network monitoring...");
             StartNetworkMonitoring();
 
-            // Start server ping monitoring (실제 서버 연결 확인)
+            // Start server ping monitoring (백그라운드에서 서버 상태 모니터링)
             LogDebug("Starting server ping monitoring...");
             StartServerPingMonitoring();
 
-            // 첫 번째 Health Check 완료 후 세션 초기화 (코루틴으로 순차 실행)
-            StartCoroutine(InitializeAfterHealthCheck());
+            // 세션 초기화 즉시 시작 (Health Check 대기 없음)
+            // AutoLogin 성공 시 MarkServerAsReachable()이 호출되어 IsOnline = true가 됨
+            _ = InitializeSessionAsync();
 
             if (dashboardVideoLoader == null)
             {
@@ -301,37 +302,6 @@ namespace VRLogDashboard
             }
 
             LogDebug("=== VRLogger Start Complete ===");
-        }
-
-        /// <summary>
-        /// 첫 번째 Health Check 완료 후 세션을 초기화하는 코루틴
-        /// </summary>
-        private IEnumerator InitializeAfterHealthCheck()
-        {
-            Log("⏳ Waiting for initial health check before session initialization...");
-
-            // 초기 Health Check 완료 대기 (최대 5초)
-            float elapsed = 0f;
-            float maxWait = 5f;
-            float checkInterval = 0.1f;
-
-            while (!isInitialHealthCheckComplete && elapsed < maxWait)
-            {
-                yield return new WaitForSeconds(checkInterval);
-                elapsed += checkInterval;
-            }
-
-            if (isInitialHealthCheckComplete)
-            {
-                Log($"✅ Initial health check completed in {elapsed:F1}s. IsOnline={IsOnline}");
-            }
-            else
-            {
-                Log($"⚠️ Initial health check timeout after {maxWait}s. Proceeding anyway. IsOnline={IsOnline}");
-            }
-
-            // 세션 초기화 시작
-            _ = InitializeSessionAsync();
         }
 
         /// <summary>
@@ -353,28 +323,9 @@ namespace VRLogDashboard
 
             try
             {
-                // 0. 초기 Health Check 완료 대기 (최대 5초)
-                if (!isInitialHealthCheckComplete)
-                {
-                    Log("⏳ Waiting for initial health check...");
-                    float healthCheckWait = 0f;
-                    float maxHealthCheckWait = 5f;
-
-                    while (!isInitialHealthCheckComplete && healthCheckWait < maxHealthCheckWait)
-                    {
-                        await Task.Delay(100);
-                        healthCheckWait += 0.1f;
-                    }
-
-                    if (isInitialHealthCheckComplete)
-                    {
-                        Log($"✅ Health check completed, IsOnline={IsOnline}");
-                    }
-                    else
-                    {
-                        Log($"⚠️ Health check timeout, proceeding with IsOnline={IsOnline}");
-                    }
-                }
+                // Health Check 대기 제거 - AutoLogin/ValidateSavedSession이 성공하면 서버 연결 확인됨
+                // 별도의 Health Check를 기다리는 것은 불필요한 지연을 발생시킴
+                Log($"🚀 Starting session initialization (IsOnline={IsOnline}, healthCheckComplete={isInitialHealthCheckComplete})");
 
                 // 1. 저장된 세션 로드 시도
                 bool sessionLoaded = LoadSessionFromLocal();
@@ -933,6 +884,13 @@ namespace VRLogDashboard
         /// </summary>
         public async Task<bool> LogWatchStartAsync(string contentId, string contentName)
         {
+            // 중복 전송 방지: 이미 온라인으로 전송되었으면 스킵
+            if (watchStartSentOnline.ContainsKey(contentId) && watchStartSentOnline[contentId])
+            {
+                Log($"⚠️ WATCH_START already sent online for contentId={contentId}, skipping duplicate");
+                return true; // 이미 성공으로 처리
+            }
+
             bool result = await LogWatchEvent(contentId, contentName, "WATCH_START", 0);
 
             // 온라인에서 성공적으로 전송되었으면 플래그 설정
