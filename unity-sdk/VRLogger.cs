@@ -735,6 +735,9 @@ namespace VRLogDashboard
                     isTokenValid = true;
                     lastTokenValidation = DateTime.UtcNow;
 
+                    // 서버 통신 성공 = 서버 연결 가능 확인됨
+                    MarkServerAsReachable();
+
                     Log($"Device registered: {response.device.device_id}, New: {response.is_new_device}");
 
                     OnLoginComplete?.Invoke(true);
@@ -2554,6 +2557,8 @@ namespace VRLogDashboard
 
                 if (response != null && response.success)
                 {
+                    // 서버 통신 성공 = 서버 연결 가능 확인됨
+                    MarkServerAsReachable();
                     LogDebug("Saved session is valid ✅");
                     return true;
                 }
@@ -2928,6 +2933,30 @@ namespace VRLogDashboard
                         }
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// 서버 통신 성공 시 호출하여 서버 연결 상태를 업데이트합니다.
+        /// AutoLogin, ValidateSavedSession 등 실제 서버 통신이 성공했을 때 호출됩니다.
+        /// </summary>
+        private void MarkServerAsReachable()
+        {
+            bool wasReachable = isServerReachable;
+            isServerReachable = true;
+
+            // 초기 Health Check도 완료된 것으로 처리
+            if (!isInitialHealthCheckComplete)
+            {
+                lock (healthCheckLock)
+                {
+                    isInitialHealthCheckComplete = true;
+                }
+                Log($"✅ Server communication successful - marked as reachable (was waiting for health check)");
+            }
+            else if (!wasReachable)
+            {
+                Log($"✅ Server communication successful - marked as reachable");
             }
         }
 
