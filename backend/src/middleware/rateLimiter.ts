@@ -18,10 +18,10 @@ export const apiLimiter = rateLimit({
   },
 });
 
-// Stricter rate limit for registration
+// Rate limit for registration (device_id 기반으로 변경하여 같은 기기의 재시도 허용)
 export const registrationLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // 10 registrations per hour per IP
+  windowMs: 15 * 60 * 1000, // 15분 (1시간 → 15분으로 단축)
+  max: 30, // 15분당 30회 (기존: 1시간당 10회)
   message: {
     success: false,
     error: {
@@ -31,6 +31,15 @@ export const registrationLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => {
+    // device_id 기반 Rate Limit (같은 기기는 재시도 허용, IP 공유 문제 해결)
+    const deviceId = req.body?.device_id;
+    if (deviceId && typeof deviceId === 'string') {
+      return `device:${deviceId}`;
+    }
+    // device_id가 없으면 IP 사용 (fallback)
+    return req.ip || 'unknown';
+  },
 });
 
 // Lenient rate limit for logging endpoints (VR devices send frequent logs)
