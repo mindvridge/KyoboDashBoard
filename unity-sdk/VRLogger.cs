@@ -3037,7 +3037,7 @@ namespace VRLogDashboard
         /// </summary>
         private async Task<bool> SyncAllOfflineLogs()
         {
-            Log($"🔄 SyncAllOfflineLogs called: IsOnline={IsOnline}, IsLoggedIn={IsLoggedIn}, enableOfflineSync={enableOfflineSync}");
+            Log($"🔄 SyncAllOfflineLogs called: IsOnline={IsOnline}, IsLoggedIn={IsLoggedIn}, enableOfflineSync={enableOfflineSync}, HasSession={HasActiveSession}");
 
             // 동시성 제어: 원자적 플래그 체크 및 설정
             lock (offlineSyncLock)
@@ -3048,6 +3048,20 @@ namespace VRLogDashboard
                     return false;
                 }
                 isSyncingOfflineLogs = true;
+            }
+
+            // 세션이 없으면 먼저 세션 시작 시도
+            if (!HasActiveSession && IsLoggedIn)
+            {
+                Log("📝 No active session, attempting to start session before sync...");
+                bool sessionStarted = await StartSession();
+                if (!sessionStarted)
+                {
+                    Log("⚠️ Failed to start session, sync postponed");
+                    lock (offlineSyncLock) { isSyncingOfflineLogs = false; }
+                    return false;
+                }
+                Log($"✅ Session started: {currentSessionId}");
             }
 
             if (!Directory.Exists(offlineLogsDirectoryPath))
@@ -3159,7 +3173,7 @@ namespace VRLogDashboard
             {
                 if (!IsOnline)
                 {
-                    Log("⚠️ Network disconnected during sync, stopping");
+                    Log($"⚠️ Network disconnected during sync (isNetworkAvailable={isNetworkAvailable}, isServerReachable={isServerReachable}), stopping");
                     allSynced = false;
                     break;
                 }
@@ -3168,13 +3182,35 @@ namespace VRLogDashboard
                 {
                     // 세션 ID 업데이트 (현재 세션 사용)
                     string body = entry.body;
-                    if (!string.IsNullOrEmpty(currentSessionId) && !string.IsNullOrEmpty(entry.session_id))
+                    Log($"📝 Syncing entry: endpoint={entry.endpoint}, entry.session_id={entry.session_id}, currentSessionId={currentSessionId}");
+
+                    if (!string.IsNullOrEmpty(currentSessionId))
                     {
-                        body = body.Replace(
-                            $"\"session_id\":\"{entry.session_id}\"",
-                            $"\"session_id\":\"{currentSessionId}\""
-                        );
-                        LogDebug($"Updated session_id: {entry.session_id} -> {currentSessionId}");
+                        if (!string.IsNullOrEmpty(entry.session_id))
+                        {
+                            // 기존 세션 ID를 현재 세션 ID로 교체
+                            body = body.Replace(
+                                $"\"session_id\":\"{entry.session_id}\"",
+                                $"\"session_id\":\"{currentSessionId}\""
+                            );
+                            Log($"🔄 Updated session_id: {entry.session_id} -> {currentSessionId}");
+                        }
+                        else if (body.Contains("\"session_id\":\"\""))
+                        {
+                            // 빈 세션 ID를 현재 세션 ID로 교체
+                            body = body.Replace(
+                                "\"session_id\":\"\"",
+                                $"\"session_id\":\"{currentSessionId}\""
+                            );
+                            Log($"🔄 Injected session_id (was empty): {currentSessionId}");
+                        }
+                    }
+                    else
+                    {
+                        Log($"⚠️ Session ID not updated: currentSessionId is empty, cannot sync without valid session");
+                        entry.retryCount++;
+                        allSynced = false;
+                        continue; // 다음 엔트리로 건너뛰기
                     }
 
                     var response = await PostRequest<BaseResponse>(entry.endpoint, body, true);
@@ -3188,8 +3224,9 @@ namespace VRLogDashboard
                     }
                     else
                     {
-                        Log($"❌ Failed to sync offline log: {entry.endpoint} - response was null or failed");
-                        throw new Exception("Server returned failure response");
+                        string errorMsg = response == null ? "response is null" : $"response.success={response.success}";
+                        Log($"❌ Failed to sync offline log: {entry.endpoint} - {errorMsg}");
+                        throw new Exception($"Server returned failure response: {errorMsg}");
                     }
                 }
                 catch (SessionNotFoundException)
