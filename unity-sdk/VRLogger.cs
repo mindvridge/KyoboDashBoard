@@ -871,11 +871,9 @@ namespace VRLogDashboard
             long startTimeMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             watchStartTimes[contentId] = startTimeMs;
 
-            // 진단용 로그 - 메서드 호출 확인
-            Log($"📝 LogWatchStart called: contentId={contentId}, contentName={contentName}, startTimeMs={startTimeMs}, HasSession={HasActiveSession}, SessionId={currentSessionId ?? "null"}");
+            // 진단용 로그
+            Log($"📝 LogWatchStart called: contentId={contentId}, contentName={contentName}, startTimeMs={startTimeMs}, HasSession={HasActiveSession}");
 
-            // 온라인 전송 플래그 초기화 (새 시청 시작)
-            watchStartSentOnline[contentId] = false;
             _ = LogWatchStartAsync(contentId, contentName);
         }
 
@@ -884,25 +882,11 @@ namespace VRLogDashboard
         /// </summary>
         public async Task<bool> LogWatchStartAsync(string contentId, string contentName)
         {
-            // 중복 전송 방지: 이미 온라인으로 전송 확인된 경우만 스킵
-            if (watchStartSentOnline.ContainsKey(contentId) && watchStartSentOnline[contentId])
-            {
-                Log($"⚠️ WATCH_START already sent online for contentId={contentId}, skipping duplicate");
-                return true;
-            }
-
             bool result = await LogWatchEvent(contentId, contentName, "WATCH_START", 0);
 
-            // 온라인에서 성공적으로 전송되었을 때만 플래그 설정
-            // 오프라인 저장된 경우는 동기화 성공 여부를 나중에 확인해야 하므로 플래그 설정 안 함
-            if (result && IsOnline)
+            if (result)
             {
-                watchStartSentOnline[contentId] = true;
-                Log($"✅ WATCH_START sent online for contentId={contentId}");
-            }
-            else if (result)
-            {
-                Log($"📥 WATCH_START saved to offline storage for contentId={contentId}");
+                Log($"✅ WATCH_START sent for contentId={contentId}");
             }
 
             return result;
@@ -914,12 +898,9 @@ namespace VRLogDashboard
         /// </summary>
         public void LogWatchEnd(string contentId, string contentName)
         {
-            // 시작 시간 확인
+            // 진단용 로그
             bool hasStartTime = watchStartTimes.ContainsKey(contentId);
-            long startTimeMs = hasStartTime ? watchStartTimes[contentId] : 0;
-
-            // 진단용 로그 - 메서드 호출 확인
-            Log($"📝 LogWatchEnd called: contentId={contentId}, contentName={contentName}, hasStartTime={hasStartTime}, startTimeMs={startTimeMs}, HasSession={HasActiveSession}, SessionId={currentSessionId ?? "null"}");
+            Log($"📝 LogWatchEnd called: contentId={contentId}, contentName={contentName}, hasStartTime={hasStartTime}, HasSession={HasActiveSession}");
 
             _ = LogWatchEndAsync(contentId, contentName);
         }
@@ -945,34 +926,14 @@ namespace VRLogDashboard
             }
             lastWatchEndTimes[contentId] = currentTimeMs;
 
-            // 시청 완료 전에 해당 콘텐츠의 시청 시작 로그가 오프라인에 있으면 먼저 동기화
-            bool watchStartSynced = false;
-            if (IsOnline && enableOfflineSync && IsLoggedIn && HasActiveSession)
-            {
-                watchStartSynced = await SyncWatchStartLogForContent(contentId);
-            }
-
-            // 온라인에서 이미 전송되었는지 확인
-            bool alreadySentOnline = watchStartSentOnline.ContainsKey(contentId) && watchStartSentOnline[contentId];
-
             // watchStartTimes에 시작 시간이 없으면 WATCH_START가 호출되지 않은 것
-            // 오프라인에서 동기화되었거나 온라인으로 전송되었으면 서버에서 duration 계산 가능
             if (!watchStartTimes.ContainsKey(contentId))
             {
-                if (watchStartSynced || alreadySentOnline)
-                {
-                    // 서버에 WATCH_START가 있으므로 duration=0으로 전송, 서버가 계산
-                    Log($"ℹ️ LogWatchEnd: No local start time but WATCH_START exists on server. Sending with duration=0 (server will calculate).");
-                    return await LogWatchEvent(contentId, contentName, "WATCH_END", 0);
-                }
-                else
-                {
-                    Log($"⚠️ LogWatchEnd: No WATCH_START found for contentId={contentId}. Skipping WATCH_END.");
-                    return false;
-                }
+                Log($"⚠️ LogWatchEnd: No WATCH_START found for contentId={contentId}. Skipping WATCH_END.");
+                return false;
             }
 
-            // 시작 시간 조회 및 duration 계산 (먼저 계산하여 값 보존)
+            // 시작 시간 조회 및 duration 계산
             long startTimeMs = watchStartTimes[contentId];
             long durationMs = currentTimeMs - startTimeMs;
             float durationSec = durationMs / 1000f;
@@ -987,27 +948,8 @@ namespace VRLogDashboard
                 durationSec = 0;
             }
 
-            // 오프라인 로그에서 동기화되지 않았고, 온라인으로도 전송되지 않았으면 시청 시작 로그를 강제로 재전송
-            if (!watchStartSynced && !alreadySentOnline)
-            {
-                Log($"⚠️ WATCH_START not synced from offline and not sent online for contentId={contentId}, resending WATCH_START...");
-                await LogWatchStartAsync(contentId, contentName);
-                // 재전송 후 잠시 대기하여 서버에 도착할 시간 확보
-                await Task.Delay(100);
-            }
-            else if (alreadySentOnline)
-            {
-                Log($"✅ WATCH_START already sent online for contentId={contentId}, skipping resend");
-            }
-
             // 시작 시간 정보 정리
             watchStartTimes.Remove(contentId);
-
-            // 플래그 정리
-            if (watchStartSentOnline.ContainsKey(contentId))
-            {
-                watchStartSentOnline.Remove(contentId);
-            }
 
             return await LogWatchEvent(contentId, contentName, "WATCH_END", durationSec);
         }
