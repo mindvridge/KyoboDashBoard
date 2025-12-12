@@ -1,15 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { authApi } from '@/utils/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { LogIn, Mail, Lock, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
-  const router = useRouter();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -21,18 +20,8 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const response = await authApi.login({ email, password });
-
-      if (response.success && response.data) {
-        // Store user info in localStorage (token is stored in HttpOnly cookie by server)
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-
-        // Redirect to dashboard
-        router.push('/');
-      } else {
-        // API returned success: false
-        setError((response as any).error?.message || '로그인에 실패했습니다.');
-      }
+      // useAuth().login() handles API call, localStorage, context state update, and redirect
+      await login(email, password);
     } catch (err: any) {
       console.error('Login error:', err);
       setError(err.message || '로그인에 실패했습니다. 서버 연결을 확인해주세요.');
