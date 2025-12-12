@@ -3291,7 +3291,7 @@ namespace VRLogDashboard
         /// <returns>동기화 성공 여부</returns>
         private async Task<bool> SyncWatchStartLogForContent(string contentId)
         {
-            if (!Directory.Exists(offlineLogsDirectoryPath)) return;
+            if (!Directory.Exists(offlineLogsDirectoryPath)) return true;
 
             try
             {
