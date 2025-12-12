@@ -1656,11 +1656,20 @@ namespace VRLogDashboard
                         }
                         else
                         {
-                            // Max retries exceeded - save to local storage
-                            SaveFailedLogToLocal(request);
+                            // Max retries exceeded - 오프라인 저장으로 변경
+                            var koreanTime = DateTime.UtcNow + KoreanTimeOffset;
+                            if (enableOfflineSync)
+                            {
+                                SaveToOfflineLog(request, koreanTime);
+                                Log($"Rate limit exceeded after {maxRetryCount} retries, saved to offline storage for sync");
+                            }
+                            else
+                            {
+                                SaveFailedLogToLocal(request);
+                                LogError($"Rate limit exceeded after {maxRetryCount} retries, saved locally");
+                            }
                             totalLogsFailed++;
                             lastFailedSync = DateTime.UtcNow;
-                            LogError($"Rate limit exceeded after {maxRetryCount} retries, saved locally");
 
                             // 모든 요청을 잠시 멈추고 대기 (서버 부하 감소)
                             Log("Pausing queue processing for 30 seconds due to rate limiting");
@@ -1684,11 +1693,20 @@ namespace VRLogDashboard
                         }
                         else
                         {
-                            // 재시도 불가능하거나 최대 재시도 초과
-                            SaveFailedLogToLocal(request);
+                            // 재시도 불가능하거나 최대 재시도 초과 - 오프라인 저장으로 변경
+                            var koreanTime = DateTime.UtcNow + KoreanTimeOffset;
+                            if (enableOfflineSync)
+                            {
+                                SaveToOfflineLog(request, koreanTime);
+                                Log($"Server error after {request.retryCount} retries, saved to offline storage for sync");
+                            }
+                            else
+                            {
+                                SaveFailedLogToLocal(request);
+                                LogError($"Server error, saved locally after {request.retryCount} retries");
+                            }
                             totalLogsFailed++;
                             lastFailedSync = DateTime.UtcNow;
-                            LogError($"Server error, saved locally after {request.retryCount} retries");
                         }
                     }
                     catch (NetworkException networkEx)
@@ -1724,11 +1742,20 @@ namespace VRLogDashboard
                         }
                         else
                         {
-                            // Max retries exceeded - save to local storage
-                            SaveFailedLogToLocal(request);
+                            // Max retries exceeded - save to offline storage for later sync
+                            var koreanTime = DateTime.UtcNow + KoreanTimeOffset;
+                            if (enableOfflineSync)
+                            {
+                                SaveToOfflineLog(request, koreanTime);
+                                Log($"Request failed after {maxRetryCount} retries, saved to offline storage for sync");
+                            }
+                            else
+                            {
+                                SaveFailedLogToLocal(request);
+                                LogError($"Request failed after {maxRetryCount} retries, saved locally");
+                            }
                             totalLogsFailed++;
                             lastFailedSync = DateTime.UtcNow;
-                            LogError($"Request failed after {maxRetryCount} retries, saved locally");
                         }
                     }
 
