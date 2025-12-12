@@ -2891,19 +2891,26 @@ namespace VRLogDashboard
                         elapsed += 0.1f;
                     }
 
-                    isServerReachable = request.result == UnityWebRequest.Result.Success;
-                    Log($"📡 Health check result: {request.result}, responseCode={request.responseCode}, isServerReachable={isServerReachable}");
+                    bool healthCheckSuccess = request.result == UnityWebRequest.Result.Success;
+                    Log($"📡 Health check result: {request.result}, responseCode={request.responseCode}, success={healthCheckSuccess}");
 
-                    if (!isServerReachable)
+                    // Health Check 성공 시에만 isServerReachable을 true로 설정
+                    // 실패 시에는 기존 상태 유지 (AutoLogin 등으로 이미 연결 확인된 경우 유지)
+                    if (healthCheckSuccess)
+                    {
+                        isServerReachable = true;
+                    }
+                    else
                     {
                         LogDebug($"Health check failed: {request.result}, error: {request.error}, responseCode: {request.responseCode}");
+                        // 기존 상태 유지 - AutoLogin 성공 등으로 이미 연결된 경우 false로 변경하지 않음
                     }
                 }
             }
             catch (Exception ex)
             {
                 LogError($"Server connectivity check exception: {ex.Message}");
-                isServerReachable = false;
+                // 예외 발생 시에도 기존 상태 유지
             }
 
             Log($"🔗 State comparison: previousState={previousState}, isServerReachable={isServerReachable}, stateChanged={previousState != isServerReachable}");
