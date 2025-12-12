@@ -2999,6 +2999,8 @@ namespace VRLogDashboard
             try
             {
                 var offlineLogFile = GetOfflineLogFilePath(koreanTime);
+                Log($"💾 Saving to offline storage: {Path.GetFileName(offlineLogFile)}, endpoint={request.endpoint}");
+
                 var offlineLogs = LoadOfflineLogFile(offlineLogFile);
 
                 var entry = new OfflineLogEntry
@@ -3016,11 +3018,12 @@ namespace VRLogDashboard
                 offlineLogs.entries.Add(entry);
                 SaveOfflineLogFile(offlineLogFile, offlineLogs);
 
-                LogDebug($"Saved log to offline storage: {koreanTime:yyyy-MM-dd} (Total: {offlineLogs.entries.Count})");
+                int unsyncedCount = offlineLogs.entries.Count(e => !e.synced);
+                Log($"✅ Saved to offline storage: {koreanTime:yyyy-MM-dd} (Total: {offlineLogs.entries.Count}, Unsynced: {unsyncedCount})");
             }
             catch (Exception ex)
             {
-                LogError($"Failed to save offline log: {ex.Message}");
+                LogError($"❌ Failed to save offline log: {ex.Message}");
             }
         }
 
@@ -3064,7 +3067,20 @@ namespace VRLogDashboard
         /// </summary>
         private async Task<bool> SyncAllOfflineLogs()
         {
-            Log($"🔄 SyncAllOfflineLogs called: IsOnline={IsOnline}, IsLoggedIn={IsLoggedIn}, enableOfflineSync={enableOfflineSync}, HasSession={HasActiveSession}");
+            Log($"🔄 SyncAllOfflineLogs called: IsOnline={IsOnline}, IsLoggedIn={IsLoggedIn}, enableOfflineSync={enableOfflineSync}, HasSession={HasActiveSession}, authToken empty={string.IsNullOrEmpty(authToken)}");
+
+            // 기본 조건 체크
+            if (!enableOfflineSync)
+            {
+                Log("⚠️ Offline sync is disabled (enableOfflineSync=false)");
+                return false;
+            }
+
+            if (!IsLoggedIn)
+            {
+                Log("⚠️ Cannot sync: Not logged in (authToken is empty)");
+                return false;
+            }
 
             // 동시성 제어: 원자적 플래그 체크 및 설정
             lock (offlineSyncLock)
@@ -3077,59 +3093,64 @@ namespace VRLogDashboard
                 isSyncingOfflineLogs = true;
             }
 
-            // 세션이 없으면 먼저 세션 시작 시도
-            if (!HasActiveSession && IsLoggedIn)
-            {
-                Log("📝 No active session, attempting to start session before sync...");
-                bool sessionStarted = await StartSession();
-                if (!sessionStarted)
-                {
-                    Log("⚠️ Failed to start session, sync postponed");
-                    lock (offlineSyncLock) { isSyncingOfflineLogs = false; }
-                    return false;
-                }
-                Log($"✅ Session started: {currentSessionId}");
-            }
-
-            if (!Directory.Exists(offlineLogsDirectoryPath))
-            {
-                Log($"📁 Offline logs directory does not exist: {offlineLogsDirectoryPath}");
-                lock (offlineSyncLock) { isSyncingOfflineLogs = false; }
-                return true;
-            }
-
-            bool allSynced = true;
-            int totalSynced = 0;
-            int totalFailed = 0;
-
             try
             {
+                // 세션이 없으면 먼저 세션 시작 시도
+                if (!HasActiveSession)
+                {
+                    Log("📝 No active session, attempting to start session before sync...");
+                    bool sessionStarted = await StartSession();
+                    if (!sessionStarted)
+                    {
+                        Log("⚠️ Failed to start session, sync postponed");
+                        return false;
+                    }
+                    Log($"✅ Session started: {currentSessionId}");
+                }
+
+                if (!Directory.Exists(offlineLogsDirectoryPath))
+                {
+                    Log($"📁 Offline logs directory does not exist: {offlineLogsDirectoryPath}");
+                    return true;
+                }
+
                 var files = Directory.GetFiles(offlineLogsDirectoryPath, "offline_*.json")
                     .OrderBy(f => f) // 날짜순 정렬 (오래된 것부터)
                     .ToArray();
+
+                Log($"📁 Found {files.Length} offline log files");
 
                 // 전체 미전송 로그 수 계산
                 int totalUnsyncedCount = 0;
                 foreach (var file in files)
                 {
                     var logs = LoadOfflineLogFile(file);
-                    totalUnsyncedCount += logs.entries.Count(e => !e.synced);
+                    int unsyncedInFile = logs.entries.Count(e => !e.synced);
+                    totalUnsyncedCount += unsyncedInFile;
+                    if (unsyncedInFile > 0)
+                    {
+                        Log($"📄 {Path.GetFileName(file)}: {unsyncedInFile} unsynced entries");
+                    }
                 }
 
                 if (totalUnsyncedCount == 0)
                 {
-                    LogDebug("No offline logs to sync");
+                    Log("✅ No offline logs to sync");
                     OnOfflineSyncComplete?.Invoke(true);
                     return true;
                 }
 
-                Log($"Starting offline sync: {totalUnsyncedCount} logs in {files.Length} files");
+                Log($"🚀 Starting offline sync: {totalUnsyncedCount} logs in {files.Length} files");
+
+                bool allSynced = true;
+                int totalSynced = 0;
+                int totalFailed = 0;
 
                 foreach (var file in files)
                 {
                     if (!IsOnline)
                     {
-                        Log("Network disconnected during sync, stopping");
+                        Log($"⚠️ Network disconnected during sync (isNetworkAvailable={isNetworkAvailable}, isServerReachable={isServerReachable}), stopping");
                         allSynced = false;
                         break;
                     }
@@ -3147,17 +3168,19 @@ namespace VRLogDashboard
                     OnOfflineSyncProgress?.Invoke(totalSynced, totalUnsyncedCount);
                 }
 
-                Log($"Offline sync completed: {totalSynced} synced, {totalFailed} failed");
+                Log($"✅ Offline sync completed: {totalSynced} synced, {totalFailed} failed");
                 OnOfflineSyncComplete?.Invoke(allSynced);
 
                 // 완전히 동기화된 파일 정리
                 CleanupSyncedOfflineFiles();
+
+                return allSynced;
             }
             catch (Exception ex)
             {
-                LogError($"Offline sync error: {ex.Message}");
-                allSynced = false;
+                LogError($"❌ Offline sync error: {ex.Message}\n{ex.StackTrace}");
                 OnOfflineSyncComplete?.Invoke(false);
+                return false;
             }
             finally
             {
@@ -3165,9 +3188,8 @@ namespace VRLogDashboard
                 {
                     isSyncingOfflineLogs = false;
                 }
+                Log("🔄 SyncAllOfflineLogs finished, isSyncingOfflineLogs reset to false");
             }
-
-            return allSynced;
         }
 
         /// <summary>
