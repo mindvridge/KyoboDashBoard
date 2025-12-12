@@ -793,23 +793,31 @@ namespace VRLogDashboard
                 // 세션이 없을 때는 조용히 실패하지 않고 항상 로그
                 Log($"⚠️ LogContentSelectAsync: No active session - contentId={contentId}, initializing={isSessionInitializing}");
 
-                // 초기화 중이면 잠시 대기 후 재시도
-                if (isSessionInitializing)
+                // 초기화 중이거나, 아직 시작 안 됐으면 잠시 대기 (race condition 방지)
+                Log("⏳ Waiting for session initialization...");
+
+                // 최대 5초 대기하면서 세션 확인
+                float elapsed = 0f;
+                float checkInterval = 0.2f;
+                float maxWait = 5f;
+
+                while (elapsed < maxWait)
                 {
-                    Log("⏳ Session is initializing, waiting...");
-                    bool initialized = await WaitForSessionInitialized(5f);
-                    if (initialized && HasActiveSession)
+                    // 세션이 준비되면 진행
+                    if (HasActiveSession)
                     {
-                        Log($"✅ Session initialized, proceeding with content select: sessionId={currentSessionId}");
+                        Log($"✅ Session ready, proceeding with content select: sessionId={currentSessionId}");
+                        break;
                     }
-                    else
-                    {
-                        Log("❌ Session initialization failed or timed out");
-                        return false;
-                    }
+
+                    await Task.Delay(TimeSpan.FromSeconds(checkInterval));
+                    elapsed += checkInterval;
                 }
-                else
+
+                // 최종 확인
+                if (!HasActiveSession)
                 {
+                    Log($"❌ Session not available after {maxWait}s wait for content select");
                     return false;
                 }
             }
@@ -1395,23 +1403,31 @@ namespace VRLogDashboard
                 // 세션이 없을 때는 조용히 실패하지 않고 항상 로그
                 Log($"⚠️ LogWatchEvent: No active session - contentId={contentId}, actionType={actionType}, initializing={isSessionInitializing}");
 
-                // 초기화 중이면 잠시 대기 후 재시도
-                if (isSessionInitializing)
+                // 초기화 중이거나, 아직 시작 안 됐으면 잠시 대기 (race condition 방지)
+                Log("⏳ Waiting for session initialization...");
+
+                // 최대 5초 대기하면서 세션 확인
+                float elapsed = 0f;
+                float checkInterval = 0.2f;
+                float maxWait = 5f;
+
+                while (elapsed < maxWait)
                 {
-                    Log("⏳ Session is initializing, waiting...");
-                    bool initialized = await WaitForSessionInitialized(5f);
-                    if (initialized && HasActiveSession)
+                    // 세션이 준비되면 진행
+                    if (HasActiveSession)
                     {
-                        Log($"✅ Session initialized, proceeding with watch event: sessionId={currentSessionId}");
+                        Log($"✅ Session ready, proceeding with watch event: sessionId={currentSessionId}");
+                        break;
                     }
-                    else
-                    {
-                        Log($"❌ Session initialization failed or timed out for watch event: {actionType}");
-                        return false;
-                    }
+
+                    await Task.Delay(TimeSpan.FromSeconds(checkInterval));
+                    elapsed += checkInterval;
                 }
-                else
+
+                // 최종 확인
+                if (!HasActiveSession)
                 {
+                    Log($"❌ Session not available after {maxWait}s wait for watch event: {actionType}");
                     return false;
                 }
             }
