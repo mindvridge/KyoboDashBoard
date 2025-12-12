@@ -793,13 +793,21 @@ namespace VRLogDashboard
                 // 세션이 없을 때는 조용히 실패하지 않고 항상 로그
                 Log($"⚠️ LogContentSelectAsync: No active session - contentId={contentId}, initializing={isSessionInitializing}");
 
-                // 초기화 중이거나, 아직 시작 안 됐으면 잠시 대기 (race condition 방지)
+                // 세션 초기화가 시작되지 않았으면 강제로 시작
+                if (!isSessionInitializing && !isSessionInitialized)
+                {
+                    Log("🚀 Session initialization not started yet, triggering now...");
+                    _ = InitializeSessionAsync();
+                    // 초기화 시작을 위해 잠시 대기
+                    await Task.Delay(100);
+                }
+
                 Log("⏳ Waiting for session initialization...");
 
-                // 최대 5초 대기하면서 세션 확인
+                // 최대 10초 대기하면서 세션 확인 (초기화 시간 고려하여 증가)
                 float elapsed = 0f;
                 float checkInterval = 0.2f;
-                float maxWait = 5f;
+                float maxWait = 10f;
 
                 while (elapsed < maxWait)
                 {
@@ -1403,13 +1411,21 @@ namespace VRLogDashboard
                 // 세션이 없을 때는 조용히 실패하지 않고 항상 로그
                 Log($"⚠️ LogWatchEvent: No active session - contentId={contentId}, actionType={actionType}, initializing={isSessionInitializing}");
 
-                // 초기화 중이거나, 아직 시작 안 됐으면 잠시 대기 (race condition 방지)
+                // 세션 초기화가 시작되지 않았으면 강제로 시작
+                if (!isSessionInitializing && !isSessionInitialized)
+                {
+                    Log("🚀 Session initialization not started yet, triggering now...");
+                    _ = InitializeSessionAsync();
+                    // 초기화 시작을 위해 잠시 대기
+                    await Task.Delay(100);
+                }
+
                 Log("⏳ Waiting for session initialization...");
 
-                // 최대 5초 대기하면서 세션 확인
+                // 최대 10초 대기하면서 세션 확인 (초기화 시간 고려하여 증가)
                 float elapsed = 0f;
                 float checkInterval = 0.2f;
-                float maxWait = 5f;
+                float maxWait = 10f;
 
                 while (elapsed < maxWait)
                 {
