@@ -20,8 +20,8 @@ export const apiLimiter = rateLimit({
 
 // Rate limit for registration (device_id 기반으로 변경하여 같은 기기의 재시도 허용)
 export const registrationLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15분 (1시간 → 15분으로 단축)
-  max: 30, // 15분당 30회 (기존: 1시간당 10회)
+  windowMs: 5 * 60 * 1000, // 5분
+  max: 100, // 5분당 100회 (사실상 제한 없음)
   message: {
     success: false,
     error: {
