@@ -884,20 +884,28 @@ namespace VRLogDashboard
         /// </summary>
         public async Task<bool> LogWatchStartAsync(string contentId, string contentName)
         {
-            // 중복 전송 방지: 이미 온라인으로 전송되었으면 스킵
+            // 중복 전송 방지: 이미 처리되었으면 스킵
             if (watchStartSentOnline.ContainsKey(contentId) && watchStartSentOnline[contentId])
             {
-                Log($"⚠️ WATCH_START already sent online for contentId={contentId}, skipping duplicate");
+                Log($"⚠️ WATCH_START already processed for contentId={contentId}, skipping duplicate");
                 return true; // 이미 성공으로 처리
             }
 
             bool result = await LogWatchEvent(contentId, contentName, "WATCH_START", 0);
 
-            // 온라인에서 성공적으로 전송되었으면 플래그 설정
-            if (result && IsOnline)
+            // 성공적으로 처리되었으면 플래그 설정 (온라인 전송 또는 오프라인 저장 모두 포함)
+            // 오프라인 저장된 경우도 나중에 동기화되므로 재전송 방지를 위해 플래그 설정
+            if (result)
             {
                 watchStartSentOnline[contentId] = true;
-                Log($"✅ WATCH_START sent online for contentId={contentId}");
+                if (IsOnline)
+                {
+                    Log($"✅ WATCH_START sent online for contentId={contentId}");
+                }
+                else
+                {
+                    Log($"📥 WATCH_START saved to offline storage for contentId={contentId}, will sync later");
+                }
             }
 
             return result;
