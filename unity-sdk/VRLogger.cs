@@ -130,7 +130,10 @@ namespace VRLogDashboard
 
         // 시청 시간 추적 (콘텐츠별)
         private Dictionary<string, float> watchStartTimes = new Dictionary<string, float>();
-        
+
+        // 시청 시작 로그 전송 완료 추적 (콘텐츠별) - 온라인에서 이미 전송되었는지 확인
+        private Dictionary<string, bool> watchStartSentOnline = new Dictionary<string, bool>();
+
         // 시청 완료 중복 방지 (콘텐츠별 마지막 시청 완료 시간)
         private Dictionary<string, float> lastWatchEndTimes = new Dictionary<string, float>();
         private const float WATCH_END_COOLDOWN = 2f; // 2초 내 중복 방지
@@ -841,6 +844,8 @@ namespace VRLogDashboard
 
             // 시청 시작 시간 기록 (콘텐츠별)
             watchStartTimes[contentId] = Time.realtimeSinceStartup;
+            // 온라인 전송 플래그 초기화 (새 시청 시작)
+            watchStartSentOnline[contentId] = false;
             _ = LogWatchStartAsync(contentId, contentName);
         }
 
@@ -849,7 +854,16 @@ namespace VRLogDashboard
         /// </summary>
         public async Task<bool> LogWatchStartAsync(string contentId, string contentName)
         {
-            return await LogWatchEvent(contentId, contentName, "WATCH_START", 0);
+            bool result = await LogWatchEvent(contentId, contentName, "WATCH_START", 0);
+
+            // 온라인에서 성공적으로 전송되었으면 플래그 설정
+            if (result && IsOnline)
+            {
+                watchStartSentOnline[contentId] = true;
+                Log($"✅ WATCH_START sent online for contentId={contentId}");
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -890,13 +904,20 @@ namespace VRLogDashboard
                 watchStartSynced = await SyncWatchStartLogForContent(contentId);
             }
 
-            // 오프라인 로그에 시청 시작이 없고, watchStartTimes에 기록되어 있으면 시청 시작 로그를 강제로 재전송
-            if (!watchStartSynced && watchStartTimes.ContainsKey(contentId))
+            // 온라인에서 이미 전송되었는지 확인
+            bool alreadySentOnline = watchStartSentOnline.ContainsKey(contentId) && watchStartSentOnline[contentId];
+
+            // 오프라인 로그에서 동기화되지 않았고, 온라인으로도 전송되지 않았으며, watchStartTimes에 기록되어 있으면 시청 시작 로그를 강제로 재전송
+            if (!watchStartSynced && !alreadySentOnline && watchStartTimes.ContainsKey(contentId))
             {
-                Log($"⚠️ WATCH_START log not found in offline logs for contentId={contentId}, resending WATCH_START...");
+                Log($"⚠️ WATCH_START not synced from offline and not sent online for contentId={contentId}, resending WATCH_START...");
                 await LogWatchStartAsync(contentId, contentName);
                 // 재전송 후 잠시 대기하여 서버에 도착할 시간 확보
                 await Task.Delay(100);
+            }
+            else if (alreadySentOnline)
+            {
+                Log($"✅ WATCH_START already sent online for contentId={contentId}, skipping resend");
             }
 
             float duration = 0;
@@ -904,6 +925,12 @@ namespace VRLogDashboard
             {
                 duration = Time.realtimeSinceStartup - watchStartTimes[contentId];
                 watchStartTimes.Remove(contentId);
+            }
+
+            // 플래그 정리
+            if (watchStartSentOnline.ContainsKey(contentId))
+            {
+                watchStartSentOnline.Remove(contentId);
             }
             
             return await LogWatchEvent(contentId, contentName, "WATCH_END", duration);
