@@ -128,15 +128,15 @@ namespace VRLogDashboard
         private const string PREF_SESSION_TIMESTAMP = "VRLogger_SessionTimestamp";
         private const string PREF_DEVICE_ID = "VRLogger_DeviceId";
 
-        // 시청 시간 추적 (콘텐츠별)
-        private Dictionary<string, float> watchStartTimes = new Dictionary<string, float>();
+        // 시청 시간 추적 (콘텐츠별) - Unix timestamp milliseconds 사용 (스레드 안전)
+        private Dictionary<string, long> watchStartTimes = new Dictionary<string, long>();
 
         // 시청 시작 로그 전송 완료 추적 (콘텐츠별) - 온라인에서 이미 전송되었는지 확인
         private Dictionary<string, bool> watchStartSentOnline = new Dictionary<string, bool>();
 
-        // 시청 완료 중복 방지 (콘텐츠별 마지막 시청 완료 시간)
-        private Dictionary<string, float> lastWatchEndTimes = new Dictionary<string, float>();
-        private const float WATCH_END_COOLDOWN = 2f; // 2초 내 중복 방지
+        // 시청 완료 중복 방지 (콘텐츠별 마지막 시청 완료 시간) - Unix timestamp milliseconds 사용
+        private Dictionary<string, long> lastWatchEndTimes = new Dictionary<string, long>();
+        private const long WATCH_END_COOLDOWN_MS = 2000; // 2초 내 중복 방지 (밀리초)
 
         // 통계 추적
         private int totalLogsSent = 0;
@@ -855,11 +855,13 @@ namespace VRLogDashboard
         /// </summary>
         public void LogWatchStart(string contentId, string contentName)
         {
-            // 진단용 로그 - 메서드 호출 확인
-            Log($"📝 LogWatchStart called: contentId={contentId}, contentName={contentName}, HasSession={HasActiveSession}, SessionId={currentSessionId ?? "null"}");
+            // 시청 시작 시간 기록 (Unix timestamp milliseconds - 스레드 안전)
+            long startTimeMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            watchStartTimes[contentId] = startTimeMs;
 
-            // 시청 시작 시간 기록 (콘텐츠별)
-            watchStartTimes[contentId] = Time.realtimeSinceStartup;
+            // 진단용 로그 - 메서드 호출 확인
+            Log($"📝 LogWatchStart called: contentId={contentId}, contentName={contentName}, startTimeMs={startTimeMs}, HasSession={HasActiveSession}, SessionId={currentSessionId ?? "null"}");
+
             // 온라인 전송 플래그 초기화 (새 시청 시작)
             watchStartSentOnline[contentId] = false;
             _ = LogWatchStartAsync(contentId, contentName);
@@ -888,8 +890,12 @@ namespace VRLogDashboard
         /// </summary>
         public void LogWatchEnd(string contentId, string contentName)
         {
+            // 시작 시간 확인
+            bool hasStartTime = watchStartTimes.ContainsKey(contentId);
+            long startTimeMs = hasStartTime ? watchStartTimes[contentId] : 0;
+
             // 진단용 로그 - 메서드 호출 확인
-            Log($"📝 LogWatchEnd called: contentId={contentId}, contentName={contentName}, HasSession={HasActiveSession}, SessionId={currentSessionId ?? "null"}");
+            Log($"📝 LogWatchEnd called: contentId={contentId}, contentName={contentName}, hasStartTime={hasStartTime}, startTimeMs={startTimeMs}, HasSession={HasActiveSession}, SessionId={currentSessionId ?? "null"}");
 
             _ = LogWatchEndAsync(contentId, contentName);
         }
@@ -900,18 +906,20 @@ namespace VRLogDashboard
         /// </summary>
         public async Task<bool> LogWatchEndAsync(string contentId, string contentName)
         {
+            // 현재 시간 기록 (Unix timestamp milliseconds - 스레드 안전)
+            long currentTimeMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
             // 중복 방지: 같은 콘텐츠에 대해 짧은 시간 내 중복 호출 방지
-            float currentTime = Time.realtimeSinceStartup;
             if (lastWatchEndTimes.ContainsKey(contentId))
             {
-                float timeSinceLastEnd = currentTime - lastWatchEndTimes[contentId];
-                if (timeSinceLastEnd < WATCH_END_COOLDOWN)
+                long timeSinceLastEndMs = currentTimeMs - lastWatchEndTimes[contentId];
+                if (timeSinceLastEndMs < WATCH_END_COOLDOWN_MS)
                 {
-                    Log($"⚠️ LogWatchEnd: Duplicate call ignored for contentId={contentId} (last call was {timeSinceLastEnd:F2}s ago)");
+                    Log($"⚠️ LogWatchEnd: Duplicate call ignored for contentId={contentId} (last call was {timeSinceLastEndMs}ms ago)");
                     return false;
                 }
             }
-            lastWatchEndTimes[contentId] = currentTime;
+            lastWatchEndTimes[contentId] = currentTimeMs;
 
             // 시청 완료 전에 해당 콘텐츠의 시청 시작 로그가 오프라인에 있으면 먼저 동기화
             bool watchStartSynced = false;
@@ -940,6 +948,21 @@ namespace VRLogDashboard
                 }
             }
 
+            // 시작 시간 조회 및 duration 계산 (먼저 계산하여 값 보존)
+            long startTimeMs = watchStartTimes[contentId];
+            long durationMs = currentTimeMs - startTimeMs;
+            float durationSec = durationMs / 1000f;
+
+            // 진단용 로그
+            Log($"📊 Duration calculation: startTimeMs={startTimeMs}, currentTimeMs={currentTimeMs}, durationMs={durationMs}, durationSec={durationSec:F2}");
+
+            // duration이 비정상인 경우 처리
+            if (durationSec < 0)
+            {
+                Log($"⚠️ LogWatchEnd: Negative duration detected ({durationSec:F2}s). Using 0.");
+                durationSec = 0;
+            }
+
             // 오프라인 로그에서 동기화되지 않았고, 온라인으로도 전송되지 않았으면 시청 시작 로그를 강제로 재전송
             if (!watchStartSynced && !alreadySentOnline)
             {
@@ -953,8 +976,7 @@ namespace VRLogDashboard
                 Log($"✅ WATCH_START already sent online for contentId={contentId}, skipping resend");
             }
 
-            // duration 계산
-            float duration = Time.realtimeSinceStartup - watchStartTimes[contentId];
+            // 시작 시간 정보 정리
             watchStartTimes.Remove(contentId);
 
             // 플래그 정리
@@ -963,7 +985,7 @@ namespace VRLogDashboard
                 watchStartSentOnline.Remove(contentId);
             }
 
-            return await LogWatchEvent(contentId, contentName, "WATCH_END", duration);
+            return await LogWatchEvent(contentId, contentName, "WATCH_END", durationSec);
         }
 
         /// <summary>
