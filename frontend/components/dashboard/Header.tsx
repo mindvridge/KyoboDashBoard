@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { RefreshCw, LogOut, User } from 'lucide-react';
+import { RefreshCw, LogOut, User, FlaskConical } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTestDeviceFilter } from '@/contexts/TestDeviceFilterContext';
 
 interface HeaderProps {
   title: string;
@@ -14,6 +15,7 @@ interface HeaderProps {
 export function Header({ title, onRefresh, isLoading }: HeaderProps) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { user, logout } = useAuth();
+  const { showTestDevices, setShowTestDevices } = useTestDeviceFilter();
 
   const handleRefresh = async () => {
     if (onRefresh) {
@@ -34,6 +36,18 @@ export function Header({ title, onRefresh, isLoading }: HeaderProps) {
         </div>
 
         <div className="flex items-center space-x-3">
+          {/* Test Device Filter */}
+          <label className="flex items-center space-x-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg cursor-pointer hover:bg-amber-100 transition-colors">
+            <input
+              type="checkbox"
+              checked={showTestDevices}
+              onChange={(e) => setShowTestDevices(e.target.checked)}
+              className="w-4 h-4 text-amber-600 border-amber-300 rounded focus:ring-amber-500"
+            />
+            <FlaskConical className="w-4 h-4 text-amber-600" />
+            <span className="text-sm font-medium text-amber-700">테스트 기기 포함</span>
+          </label>
+
           {/* Refresh Button */}
           <Button
             variant="outline"

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { logsApi } from '@/utils/api';
@@ -8,6 +8,8 @@ import { ContentLog } from '@/types';
 import { formatDate, getActionTypeLabel } from '@/utils/format';
 import { Play, Pause, Square, MousePointer, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTestDeviceFilter } from '@/contexts/TestDeviceFilterContext';
+import { isTestDevice } from '@/constants/testDevices';
 
 const actionIcons: Record<string, typeof Play> = {
   SELECT: MousePointer,
@@ -29,8 +31,17 @@ const actionColors: Record<string, 'default' | 'success' | 'warning' | 'error' |
 
 export function RecentLogs() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
-  const [logs, setLogs] = useState<ContentLog[]>([]);
+  const { showTestDevices } = useTestDeviceFilter();
+  const [allLogs, setAllLogs] = useState<ContentLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // 테스트 기기 필터링된 로그
+  const logs = useMemo(() => {
+    if (showTestDevices) {
+      return allLogs;
+    }
+    return allLogs.filter(log => !log.device_id || !isTestDevice(log.device_id));
+  }, [allLogs, showTestDevices]);
 
   useEffect(() => {
     // 인증 확인 전에는 API 호출하지 않음
@@ -43,7 +54,7 @@ export function RecentLogs() {
         const response = await logsApi.getRecent(30);
         if (response.success) {
           // 모든 로그 표시 (SELECT, WATCH_START, WATCH_END 등)
-          setLogs(response.data.slice(0, 20));
+          setAllLogs(response.data.slice(0, 20));
         }
       } catch {
         // Error handled silently

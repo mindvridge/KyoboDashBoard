@@ -10,7 +10,9 @@ import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { devicesApi } from '@/utils/api';
 import { formatDate } from '@/utils/format';
-import { Monitor, Wifi, WifiOff, Search, Filter, Trash2 } from 'lucide-react';
+import { Monitor, Wifi, WifiOff, Search, Filter, Trash2, FlaskConical } from 'lucide-react';
+import { useTestDeviceFilter } from '@/contexts/TestDeviceFilterContext';
+import { isTestDevice } from '@/constants/testDevices';
 
 interface Device {
   id: string;
@@ -22,6 +24,7 @@ interface Device {
 }
 
 export default function DevicesPage() {
+  const { showTestDevices } = useTestDeviceFilter();
   const [devices, setDevices] = useState<Device[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
@@ -50,6 +53,11 @@ export default function DevicesPage() {
   // Filtered devices
   const filteredDevices = useMemo(() => {
     return devices.filter((device) => {
+      // Test device filter
+      if (!showTestDevices && isTestDevice(device.device_id)) {
+        return false;
+      }
+
       // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
@@ -67,7 +75,7 @@ export default function DevicesPage() {
 
       return true;
     });
-  }, [devices, searchQuery, statusFilter]);
+  }, [devices, searchQuery, statusFilter, showTestDevices]);
 
   // Statistics
   const stats = useMemo(() => ({
@@ -216,7 +224,15 @@ export default function DevicesPage() {
                             )}
                           </td>
                           <td className="py-3 px-4 text-sm font-mono text-gray-900">
-                            {device.device_id}
+                            <div className="flex items-center gap-2">
+                              {device.device_id}
+                              {isTestDevice(device.device_id) && (
+                                <Badge variant="warning" className="text-xs flex items-center gap-1">
+                                  <FlaskConical className="w-3 h-3" />
+                                  테스트
+                                </Badge>
+                              )}
+                            </div>
                           </td>
                           <td className="py-3 px-4 text-sm text-gray-600">
                             {device.model || '-'}

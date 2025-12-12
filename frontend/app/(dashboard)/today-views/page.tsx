@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -10,6 +10,8 @@ import { formatDuration } from '@/utils/format';
 import { Clock, PlayCircle, Eye, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
+import { useTestDeviceFilter } from '@/contexts/TestDeviceFilterContext';
+import { isTestDevice } from '@/constants/testDevices';
 
 interface ViewLog {
   id: string;
@@ -17,12 +19,22 @@ interface ViewLog {
   action_type: string;
   timestamp: string;
   duration?: number;
+  device_id?: string;
   device_info?: string;
 }
 
 export default function TodayViewsPage() {
-  const [logs, setLogs] = useState<ViewLog[]>([]);
+  const { showTestDevices } = useTestDeviceFilter();
+  const [allLogs, setAllLogs] = useState<ViewLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // 테스트 기기 필터링된 로그
+  const logs = useMemo(() => {
+    if (showTestDevices) {
+      return allLogs;
+    }
+    return allLogs.filter(log => !log.device_id || !isTestDevice(log.device_id));
+  }, [allLogs, showTestDevices]);
 
   const fetchTodayLogs = useCallback(async () => {
     try {
@@ -40,7 +52,7 @@ export default function TodayViewsPage() {
         const viewLogs = result.data.filter(
           (log: ViewLog) => ['WATCH_START', 'WATCH_END'].includes(log.action_type)
         );
-        setLogs(viewLogs);
+        setAllLogs(viewLogs);
       }
     } catch (error) {
       console.error('Failed to fetch today logs:', error);

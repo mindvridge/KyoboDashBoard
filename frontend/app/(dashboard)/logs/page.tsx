@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -12,6 +12,8 @@ import { logsApi, devicesApi } from '@/utils/api';
 import { formatDate, getActionTypeLabel } from '@/utils/format';
 import { format, subDays } from 'date-fns';
 import { Filter, ChevronLeft, ChevronRight, Trash2, Download } from 'lucide-react';
+import { useTestDeviceFilter } from '@/contexts/TestDeviceFilterContext';
+import { isTestDevice } from '@/constants/testDevices';
 
 const actionColors: Record<string, 'default' | 'success' | 'warning' | 'info'> = {
   SELECT: 'info',
@@ -25,12 +27,21 @@ const MAX_WATCH_TIME = 20 * 60; // 20분 (초)
 
 
 export default function LogsPage() {
-  const [logs, setLogs] = useState<any[]>([]);
+  const { showTestDevices } = useTestDeviceFilter();
+  const [allLogs, setAllLogs] = useState<any[]>([]);
   const [devices, setDevices] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // 테스트 기기 필터링된 로그
+  const logs = useMemo(() => {
+    if (showTestDevices) {
+      return allLogs;
+    }
+    return allLogs.filter(log => !log.device_id || !isTestDevice(log.device_id));
+  }, [allLogs, showTestDevices]);
 
   const [filters, setFilters] = useState({
     startDate: '',
@@ -100,7 +111,7 @@ export default function LogsPage() {
           );
         }
 
-        setLogs(filteredLogs);
+        setAllLogs(filteredLogs);
         setSelectedIds(new Set());
       }
     } catch {

@@ -35,6 +35,7 @@ export interface Session {
 export interface ContentLog {
   id: string;
   session_id: string;
+  device_id?: string;
   device_info?: string;
   content_id: string;
   content_name: string;

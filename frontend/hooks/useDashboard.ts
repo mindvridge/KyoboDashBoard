@@ -1,17 +1,28 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { statsApi, sessionsApi } from '@/utils/api';
 import { DashboardStats, Session, Alert } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTestDeviceFilter } from '@/contexts/TestDeviceFilterContext';
+import { isTestDevice } from '@/constants/testDevices';
 
 export function useDashboard() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { showTestDevices } = useTestDeviceFilter();
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [activeSessions, setActiveSessions] = useState<Session[]>([]);
+  const [allActiveSessions, setAllActiveSessions] = useState<Session[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // 테스트 기기 필터링된 활성 세션
+  const activeSessions = useMemo(() => {
+    if (showTestDevices) {
+      return allActiveSessions;
+    }
+    return allActiveSessions.filter(session => !isTestDevice(session.device_id));
+  }, [allActiveSessions, showTestDevices]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -23,7 +34,7 @@ export function useDashboard() {
       ]);
 
       if (statsRes.success) setStats(statsRes.data);
-      if (sessionsRes.success) setActiveSessions(sessionsRes.data);
+      if (sessionsRes.success) setAllActiveSessions(sessionsRes.data);
       if (alertsRes.success) setAlerts(alertsRes.data);
     } catch (err) {
       // 401 에러는 조용히 처리 (인증 만료)
