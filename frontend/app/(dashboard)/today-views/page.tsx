@@ -11,7 +11,7 @@ import { Clock, PlayCircle, Eye, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
 import { useTestDeviceFilter } from '@/contexts/TestDeviceFilterContext';
-import { isTestDevice } from '@/constants/testDevices';
+import { isTestDevice, getDeviceDisplayName } from '@/constants/testDevices';
 
 interface ViewLog {
   id: string;
@@ -181,7 +181,7 @@ export default function TodayViewsPage() {
                           <td className="py-3 px-4 text-sm text-gray-900 max-w-xs truncate">
                             {log.content_name}
                           </td>
-                          <td className="py-3 px-4 text-sm text-gray-600">{log.device_info || '-'}</td>
+                          <td className="py-3 px-4 text-sm text-gray-600">{log.device_info ? getDeviceDisplayName(log.device_info) : '-'}</td>
                           <td className="py-3 px-4">
                             <Badge
                               variant={log.action_type === 'WATCH_END' ? 'success' : 'info'}

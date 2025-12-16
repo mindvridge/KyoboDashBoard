@@ -9,7 +9,7 @@ import { formatDate, getActionTypeLabel } from '@/utils/format';
 import { Play, Pause, Square, MousePointer, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTestDeviceFilter } from '@/contexts/TestDeviceFilterContext';
-import { isTestDevice } from '@/constants/testDevices';
+import { isTestDevice, getDeviceDisplayName } from '@/constants/testDevices';
 
 const actionIcons: Record<string, typeof Play> = {
   SELECT: MousePointer,
@@ -120,7 +120,7 @@ export function RecentLogs() {
                     </Badge>
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {formatDate(log.timestamp, 'HH:mm:ss')} - {log.device_info || '기기'}
+                    {formatDate(log.timestamp, 'HH:mm:ss')} - {log.device_info ? getDeviceDisplayName(log.device_info) : '기기'}
                   </p>
                 </div>
               </div>

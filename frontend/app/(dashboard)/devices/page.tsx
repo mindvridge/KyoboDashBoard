@@ -12,7 +12,7 @@ import { devicesApi } from '@/utils/api';
 import { formatDate } from '@/utils/format';
 import { Monitor, Wifi, WifiOff, Search, Filter, Trash2, FlaskConical } from 'lucide-react';
 import { useTestDeviceFilter } from '@/contexts/TestDeviceFilterContext';
-import { isTestDevice } from '@/constants/testDevices';
+import { isTestDevice, getDeviceDisplayName } from '@/constants/testDevices';
 
 interface Device {
   id: string;
@@ -225,7 +225,7 @@ export default function DevicesPage() {
                           </td>
                           <td className="py-3 px-4 text-sm font-mono text-gray-900">
                             <div className="flex items-center gap-2">
-                              {device.device_id}
+                              {getDeviceDisplayName(device.device_id)}
                               {isTestDevice(device.device_id) && (
                                 <Badge variant="warning" className="text-xs flex items-center gap-1">
                                   <FlaskConical className="w-3 h-3" />

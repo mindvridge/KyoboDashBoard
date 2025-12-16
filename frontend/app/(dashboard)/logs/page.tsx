@@ -13,7 +13,7 @@ import { formatDate, getActionTypeLabel } from '@/utils/format';
 import { format, subDays } from 'date-fns';
 import { Filter, ChevronLeft, ChevronRight, Trash2, Download } from 'lucide-react';
 import { useTestDeviceFilter } from '@/contexts/TestDeviceFilterContext';
-import { isTestDevice } from '@/constants/testDevices';
+import { isTestDevice, getDeviceDisplayName } from '@/constants/testDevices';
 
 const actionColors: Record<string, 'default' | 'success' | 'warning' | 'info'> = {
   SELECT: 'info',
@@ -433,7 +433,7 @@ export default function LogsPage() {
                               {formatDate(log.timestamp, 'MM-dd HH:mm:ss')}
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-600">
-                              {log.device_info || '-'}
+                              {log.device_info ? getDeviceDisplayName(log.device_info) : '-'}
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-900 max-w-xs truncate">
                               {log.content_name}

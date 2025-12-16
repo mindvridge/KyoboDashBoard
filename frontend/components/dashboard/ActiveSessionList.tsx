@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Session } from '@/types';
 import { formatDuration, formatRelativeTime } from '@/utils/format';
 import { Monitor, Clock } from 'lucide-react';
+import { getDeviceDisplayName } from '@/constants/testDevices';
 
 interface ActiveSessionListProps {
   sessions: Session[];
@@ -63,7 +64,7 @@ export function ActiveSessionList({ sessions, isLoading }: ActiveSessionListProp
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium text-gray-900 truncate">
-                      {session.device_info || '알 수 없는 기기'}
+                      {session.device_info ? getDeviceDisplayName(session.device_info) : '알 수 없는 기기'}
                     </p>
                     <Badge variant="success">진행 중</Badge>
                   </div>
