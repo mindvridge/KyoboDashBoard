@@ -48,6 +48,11 @@ async function bootstrap() {
         isOriginAllowed = true;
         res.header('Access-Control-Allow-Origin', origin);
         logger.debug('CORS: Origin allowed', { origin });
+      } else if (origin && origin.endsWith('.vercel.app')) {
+        // Allow all Vercel preview deployments
+        isOriginAllowed = true;
+        res.header('Access-Control-Allow-Origin', origin);
+        logger.debug('CORS: Vercel preview origin allowed', { origin });
       } else if (origin) {
         // Origin not allowed - log warning
         logger.warn('CORS: Origin blocked', { origin, allowedOrigins });
