@@ -367,38 +367,11 @@ export default function LogsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleDownload('current')}
-                      className="text-green-600 border-green-300 hover:bg-green-50"
-                    >
-                      <Download className="w-4 h-4 mr-1" />
-                      현재 필터
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
                       onClick={() => handleDownload('watch')}
                       className="text-blue-600 border-blue-300 hover:bg-blue-50"
                     >
                       <Download className="w-4 h-4 mr-1" />
                       시청 로그
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDownload('monthly')}
-                      className="text-purple-600 border-purple-300 hover:bg-purple-50"
-                    >
-                      <Download className="w-4 h-4 mr-1" />
-                      월별
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDownload('yearly')}
-                      className="text-orange-600 border-orange-300 hover:bg-orange-50"
-                    >
-                      <Download className="w-4 h-4 mr-1" />
-                      년도별
                     </Button>
                   </div>
                   {/* Delete Buttons */}
@@ -415,16 +388,6 @@ export default function LogsPage() {
                         선택 삭제 ({selectedIds.size})
                       </Button>
                     )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleDeleteAll}
-                      disabled={isDeleting || logs.length === 0}
-                      className="text-red-600 border-red-300 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-4 h-4 mr-1" />
-                      전체 삭제
-                    </Button>
                   </div>
                 </div>
               </div>
